@@ -1,4 +1,4 @@
-replicaCount: 2 # Вимога: 2 інстанси
+replicaCount: 2
 
 image:
   repository: acrbestrong01.azurecr.io/bestrong-api
