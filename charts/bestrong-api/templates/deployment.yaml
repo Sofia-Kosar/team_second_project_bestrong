@@ -12,13 +12,18 @@ spec:
       labels:
         app: {{ .Release.Name }}
     spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: api
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy | default "IfNotPresent" }}
           env:
             - name: DB_CONNECTION_STRING
               value: {{ .Values.env.connectionString | quote }}
             - name: ASPNETCORE_ENVIRONMENT
-              value: {{ .Values.env.ASPNETCORE_ENVIRINMENT | quote }}
+              value: {{ .Values.env.ASPNETCORE_ENVIRONMENT | quote }}
           ports:
             - containerPort: {{ .Values.service.targetPort }}
