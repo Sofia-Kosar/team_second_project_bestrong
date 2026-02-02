@@ -3,6 +3,7 @@ replicaCount: 2
 image:
   repository: acrbestrong01.azurecr.io/bestrong-api
   tag: "latest"
+  pullPolicy: IfNotPresent
 
 service:
   port: 80
@@ -10,17 +11,11 @@ service:
 
 ingress:
   enabled: true
-  className: nginx
-  annotations: {} 
-  hosts:
-    - host: "" 
-      paths:
-        - path: /
-          pathType: Prefix
-
+  host: "40.121.187.218.nip.io"
+  
 canary:
-  enabled: true
-  weight: 10
+  enabled: false
 
 env:
   ASPNETCORE_ENVIRONMENT: "Development"
+  connectionString: "Data Source=App.db"
