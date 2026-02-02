@@ -5,6 +5,9 @@ image:
   tag: "latest"
   pullPolicy: IfNotPresent
 
+imagePullSecrets:
+  - name: acr-secret
+
 service:
   port: 80
   targetPort: 5000
@@ -13,8 +16,14 @@ ingress:
   enabled: true
   host: "40.121.187.218.nip.io"
   
+
 canary:
   enabled: false
+  weight: 10
+
+# certManager:
+#   enabled: true
+#   clusterIssuer: "selfsigned-issuer"
 
 env:
   ASPNETCORE_ENVIRONMENT: "Development"
