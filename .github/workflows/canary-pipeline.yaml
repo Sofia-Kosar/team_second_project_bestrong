@@ -51,7 +51,7 @@ jobs:
   # === Build ===
   build:
     needs: infrastructure 
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
     - uses: actions/checkout@v3
     
@@ -69,7 +69,7 @@ jobs:
   # === Deploy Canary ===
   deploy-canary:
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
     - uses: actions/checkout@v3
     - uses: azure/login@v1
@@ -94,7 +94,7 @@ jobs:
   # === Manual Approval ===
   approve:
     needs: deploy-canary
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     environment: Production
     steps:
       - run: echo "Canary is running. Check it properly!"
@@ -102,7 +102,7 @@ jobs:
   # === Promote to Stable ===
   promote-stable:
     needs: approve
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
     - uses: actions/checkout@v3
     - uses: azure/login@v1
