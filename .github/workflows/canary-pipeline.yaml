@@ -124,4 +124,4 @@ jobs:
           --namespace default
 
     - name: Cleanup Canary
-      run: helm uninstall bestrong-canary --namespace default --ignore-not-found
+      run: helm uninstall bestrong-canary --namespace default || true
