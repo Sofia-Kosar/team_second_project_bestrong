@@ -16,7 +16,7 @@ jobs:
   # === Terraform ===
   infrastructure:
     name: 'Terraform Apply'
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: ${{ env.TF_WORKING_DIR }}
