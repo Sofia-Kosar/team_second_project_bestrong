@@ -7,7 +7,7 @@ variable "resource_group_name" {
 variable "location" {
   description = "Azure region to deploy resources"
   type        = string
-  default     = "West US 2"
+  default     = "eastus"
 }
 
 variable "acr_name_prefix" {
@@ -37,5 +37,5 @@ variable "node_count" {
 variable "vm_size" {
   description = "The size of the Virtual Machine for the nodes"
   type        = string
-  default     = "Standard_B2s_v2"
+  default     = "Standard_D2_v2"
 }
