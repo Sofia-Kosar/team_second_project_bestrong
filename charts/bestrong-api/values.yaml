@@ -4,12 +4,9 @@ image:
   repository: acrbestrong01.azurecr.io/bestrong-api
   tag: "latest"
   pullPolicy: IfNotPresent
-<<<<<<< HEAD
 
 imagePullSecrets:
   - name: acr-secret
-=======
->>>>>>> cicd/helm
 
 service:
   port: 80
@@ -17,34 +14,16 @@ service:
 
 ingress:
   enabled: true
-<<<<<<< HEAD
-  className: nginx
-  host: "20-62-153-61.nip.io"
-  annotations:
-    cert-manager.io/cluster-issuer: "selfsigned-issuer"
-  tls:
-    - secretName: bestrong-tls
-      hosts:
-        - "20-62-153-61.nip.io"
-  hosts:
-    - host: "20-62-153-61.nip.io"
-      paths:
-        - path: /
-          pathType: Prefix
+  host: "40.121.187.218.nip.io"
+  
 
 canary:
   enabled: false
   weight: 10
-=======
-  host: "40.121.187.218.nip.io"
-  
-canary:
-  enabled: false
->>>>>>> cicd/helm
 
-certManager:
-  enabled: true
-  clusterIssuer: "selfsigned-issuer"
+# certManager:
+#   enabled: true
+#   clusterIssuer: "selfsigned-issuer"
 
 env:
   ASPNETCORE_ENVIRONMENT: "Development"
