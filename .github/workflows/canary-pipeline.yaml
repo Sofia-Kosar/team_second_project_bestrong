@@ -1,4 +1,4 @@
-name: Canary Deployment
+name: Canary Deployment with Terraform
 
 on:
   push:
@@ -6,16 +6,55 @@ on:
   workflow_dispatch:
 
 env:
-  ACR_NAME: acrbestrong01
+  TF_WORKING_DIR: './terraform'
+  ACR_NAME: bestrongacr958204
   AKS_CLUSTER: bestrong-aks-cluster
   RESOURCE_GROUP: bestrong-rg
   IMAGE_NAME: bestrong-api
 
 jobs:
+  # === Terraform ===
+  infrastructure:
+    name: 'Terraform Apply'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.TF_WORKING_DIR }}
+    
+    env:
+      ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+      ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+      ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_wrapper: false
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Validate
+        run: terraform validate
+
+      - name: Terraform Plan
+        run: terraform plan -out=tfplan
+
+      - name: Terraform Apply
+        if: github.ref == 'refs/heads/main'
+        run: terraform apply -auto-approve tfplan
+
+  # === Build ===
   build:
+    needs: infrastructure 
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
+    
     - name: Azure Login
       uses: azure/login@v1
       with:
@@ -27,6 +66,7 @@ jobs:
           --registry ${{ env.ACR_NAME }} \
           --file Dockerfile .
 
+  # === Deploy Canary ===
   deploy-canary:
     needs: build
     runs-on: ubuntu-latest
@@ -51,6 +91,7 @@ jobs:
           --set env.connectionString="${{ secrets.DB_CONNECTION_STRING }}" \
           --namespace default
 
+  # === Manual Approval ===
   approve:
     needs: deploy-canary
     runs-on: ubuntu-latest
@@ -58,6 +99,7 @@ jobs:
     steps:
       - run: echo "Canary is running. Check it properly!"
 
+  # === Promote to Stable ===
   promote-stable:
     needs: approve
     runs-on: ubuntu-latest
