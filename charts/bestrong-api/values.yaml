@@ -1,0 +1,26 @@
+replicaCount: 2 # Вимога: 2 інстанси
+
+image:
+  repository: acrbestrong01.azurecr.io/bestrong-api
+  tag: "latest"
+
+service:
+  port: 80
+  targetPort: 8080
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations: {} 
+  hosts:
+    - host: "" 
+      paths:
+        - path: /
+          pathType: Prefix
+
+canary:
+  enabled: false
+  weight: 0
+
+env:
+  connectionString: ""

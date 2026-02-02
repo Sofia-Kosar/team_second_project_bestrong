@@ -1,0 +1,85 @@
+name: Canary Deployment
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  ACR_NAME: acrbestrong01
+  AKS_CLUSTER: bestrong-aks-cluster
+  RESOURCE_GROUP: bestrong-rg
+  IMAGE_NAME: bestrong-api
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Azure Login
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+    
+    - name: Build and Push Docker
+      run: |
+        az acr build --image ${{ env.IMAGE_NAME }}:${{ github.sha }} \
+          --registry ${{ env.ACR_NAME }} \
+          --file Dockerfile .
+
+  deploy-canary:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+    - uses: azure/aks-set-context@v3
+      with:
+        resource-group: ${{ env.RESOURCE_GROUP }}
+        cluster-name: ${{ env.AKS_CLUSTER }}
+    - uses: azure/setup-helm@v3
+
+    - name: Deploy Canary
+      run: |
+        helm upgrade --install bestrong-canary ./charts/bestrong-api \
+          --set image.repository=${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }} \
+          --set image.tag=${{ github.sha }} \
+          --set canary.enabled=true \
+          --set canary.weight=20 \
+          --set env.connectionString="${{ secrets.DB_CONNECTION_STRING }}" \
+          --namespace default
+
+  approve:
+    needs: deploy-canary
+    runs-on: ubuntu-latest
+    environment: Production
+    steps:
+      - run: echo "Canary is running. Check it properly!"
+
+  promote-stable:
+    needs: approve
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+    - uses: azure/aks-set-context@v3
+      with:
+        resource-group: ${{ env.RESOURCE_GROUP }}
+        cluster-name: ${{ env.AKS_CLUSTER }}
+    - uses: azure/setup-helm@v3
+
+    - name: Deploy Stable
+      run: |
+        helm upgrade --install bestrong-prod ./charts/bestrong-api \
+          --set image.repository=${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }} \
+          --set image.tag=${{ github.sha }} \
+          --set canary.enabled=false \
+          --set env.connectionString="${{ secrets.DB_CONNECTION_STRING }}" \
+          --namespace default
+
+    - name: Cleanup Canary
+      run: helm uninstall bestrong-canary --namespace default --ignore-not-found
