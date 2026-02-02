@@ -18,5 +18,7 @@ spec:
           env:
             - name: DB_CONNECTION_STRING
               value: {{ .Values.env.connectionString | quote }}
+            - name: ASPNETCORE_ENVIRONMENT
+              value: "Development"
           ports:
             - containerPort: {{ .Values.service.targetPort }}
