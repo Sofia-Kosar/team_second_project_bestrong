@@ -19,8 +19,8 @@ ingress:
           pathType: Prefix
 
 canary:
-  enabled: false
-  weight: 0
+  enabled: true
+  weight: 10
 
 env:
   connectionString: ""
