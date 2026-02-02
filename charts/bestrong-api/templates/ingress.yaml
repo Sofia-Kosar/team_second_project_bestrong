@@ -1,10 +1,16 @@
 {{- if .Values.ingress.enabled }}
+<<<<<<< HEAD
 apiVersion: networking.k8s.io/v1
 kind: Ingress
+=======
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+>>>>>>> cicd/helm
 metadata:
-  name: {{ .Release.Name }}-ingress
+  name: {{ .Release.Name }}-ingressroute
   labels:
     app: {{ .Release.Name }}
+<<<<<<< HEAD
   annotations:
     {{- with .Values.ingress.annotations }}
     {{- toYaml . | nindent 4 }}
@@ -26,4 +32,15 @@ spec:
                 name: {{ .Release.Name }}
                 port:
                   number: {{ .Values.service.port }}
+=======
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: Host(`{{ if .Values.canary.enabled }}canary-{{ .Values.ingress.host }}{{ else }}{{ .Values.ingress.host }}{{ end }}`)
+      kind: Rule
+      services:
+        - name: {{ .Release.Name }}
+          port: {{ .Values.service.port }}
+>>>>>>> cicd/helm
 {{- end }}

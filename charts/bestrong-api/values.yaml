@@ -4,9 +4,12 @@ image:
   repository: acrbestrong01.azurecr.io/bestrong-api
   tag: "latest"
   pullPolicy: IfNotPresent
+<<<<<<< HEAD
 
 imagePullSecrets:
   - name: acr-secret
+=======
+>>>>>>> cicd/helm
 
 service:
   port: 80
@@ -14,6 +17,7 @@ service:
 
 ingress:
   enabled: true
+<<<<<<< HEAD
   className: nginx
   host: "20-62-153-61.nip.io"
   annotations:
@@ -31,6 +35,12 @@ ingress:
 canary:
   enabled: false
   weight: 10
+=======
+  host: "40.121.187.218.nip.io"
+  
+canary:
+  enabled: false
+>>>>>>> cicd/helm
 
 certManager:
   enabled: true
