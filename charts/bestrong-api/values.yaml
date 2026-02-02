@@ -23,4 +23,4 @@ canary:
   weight: 10
 
 env:
-  connectionString: ""
+  ASPNETCORE_ENVIRONMENT: "Development"
