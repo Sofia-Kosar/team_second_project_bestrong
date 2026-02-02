@@ -3,6 +3,10 @@ replicaCount: 2
 image:
   repository: acrbestrong01.azurecr.io/bestrong-api
   tag: "latest"
+  pullPolicy: IfNotPresent
+
+imagePullSecrets:
+  - name: acr-secret
 
 service:
   port: 80
@@ -11,16 +15,27 @@ service:
 ingress:
   enabled: true
   className: nginx
-  annotations: {} 
+  host: "20-62-153-61.nip.io"
+  annotations:
+    cert-manager.io/cluster-issuer: "selfsigned-issuer"
+  tls:
+    - secretName: bestrong-tls
+      hosts:
+        - "20-62-153-61.nip.io"
   hosts:
-    - host: "" 
+    - host: "20-62-153-61.nip.io"
       paths:
         - path: /
           pathType: Prefix
 
 canary:
-  enabled: true
+  enabled: false
   weight: 10
+
+certManager:
+  enabled: true
+  clusterIssuer: "selfsigned-issuer"
 
 env:
   ASPNETCORE_ENVIRONMENT: "Development"
+  connectionString: "Data Source=App.db"

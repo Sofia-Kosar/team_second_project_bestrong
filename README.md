@@ -21,4 +21,3 @@ git push [YOUR_BRANCH]
 
 Create a pull request from `[YOUR_BRANCH]` to `main`.
 
-hello
