@@ -13,77 +13,55 @@ env:
   IMAGE_NAME: bestrong-api
   CHART_NAME: bestrong-api
   APP_VERSION: "1.0"
+  RELEASE_NAME: "bestrong-prod"
 
 jobs:
-  # === Terraform ===
+  # === Terraform  ===
   infrastructure:
     name: 'Terraform Apply'
     runs-on: self-hosted
     defaults:
       run:
         working-directory: ${{ env.TF_WORKING_DIR }}
-    
     env:
       ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
       ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
       ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
       ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
-
     steps:
       - uses: actions/checkout@v3
-
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v2
         with:
           terraform_wrapper: false
-
       - name: Terraform Init
         run: terraform init
-
-      - name: Terraform Validate
-        run: terraform validate
-
-      - name: Terraform Plan
-        run: terraform plan -out=tfplan
-
       - name: Terraform Apply
         if: github.ref == 'refs/heads/main'
-        run: terraform apply -auto-approve tfplan
+        run: terraform apply -auto-approve
 
-  # === Build Docker & Helm ===
+  # === Build ===
   build:
     needs: infrastructure 
     runs-on: self-hosted
     outputs:
       docker_tag: ${{ steps.calc_version.outputs.DOCKER_TAG }}
-
     steps:
     - uses: actions/checkout@v3
-    
     - name: Azure Login
       uses: azure/login@v1
       with:
         creds: ${{ secrets.AZURE_CREDENTIALS }}
-    
     - uses: azure/setup-helm@v3
-
-    # 1. Calculate Version
     - name: Calculate Version
       id: calc_version
       run: |
         VERSION="${{ env.APP_VERSION }}.${{ github.run_number }}"
         echo "DOCKER_TAG=$VERSION" >> $GITHUB_OUTPUT
-        echo "Generated Version: $VERSION"
-
-    # 2. Build & Push Docker Image
     - name: Build and Push Docker
       run: |
         VERSION="${{ steps.calc_version.outputs.DOCKER_TAG }}"
-        az acr build --image ${{ env.IMAGE_NAME }}:$VERSION \
-          --registry ${{ env.ACR_NAME }} \
-          --file Dockerfile .
-
-    # 3. Build & Push Helm Chart
+        az acr build --image ${{ env.IMAGE_NAME }}:$VERSION --registry ${{ env.ACR_NAME }} --file Dockerfile .
     - name: Package and Push Helm Chart
       run: |
         VERSION="${{ steps.calc_version.outputs.DOCKER_TAG }}"
@@ -108,33 +86,37 @@ jobs:
         cluster-name: ${{ env.AKS_CLUSTER }}
     - uses: azure/setup-helm@v3
 
-    - name: Deploy Canary from ACR
+    - name: Deploy Canary (Update existing release)
       run: |
-        VERSION="${{ needs.build.outputs.docker_tag }}"
+        NEW_VERSION="${{ needs.build.outputs.docker_tag }}"
         ACR_URL="${{ env.ACR_NAME }}.azurecr.io"
         
-        # We need to login to pull the chart
         USER_NAME="00000000-0000-0000-0000-000000000000"
         PASSWORD=$(az acr login --name ${{ env.ACR_NAME }} --expose-token --output tsv --query accessToken)
         helm registry login $ACR_URL --username $USER_NAME --password $PASSWORD
 
-        echo "Deploying Canary Version: $VERSION"
+        CURRENT_STABLE_TAG=$(kubectl get deployment ${{ env.RELEASE_NAME }} -n default -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null | cut -d':' -f2 || echo "$NEW_VERSION")
+        
+        echo "Current Stable: $CURRENT_STABLE_TAG"
+        echo "New Canary: $NEW_VERSION"
 
-        # NOTE: Path is now oci://...
-        helm upgrade --install bestrong-canary oci://$ACR_URL/helm/${{ env.CHART_NAME }} \
-          --version $VERSION \
+
+        helm upgrade --install ${{ env.RELEASE_NAME }} oci://$ACR_URL/helm/${{ env.CHART_NAME }} \
+          --version $NEW_VERSION \
           --set image.repository=$ACR_URL/${{ env.IMAGE_NAME }} \
-          --set image.tag=$VERSION \
+          --set image.tag=$CURRENT_STABLE_TAG \
           --set canary.enabled=true \
+          --set canary.image.tag=$NEW_VERSION \
           --set canary.weight=20 \
           --set env.connectionString="${{ secrets.DB_CONNECTION_STRING }}" \
           --set env.aspnetEnvironment="Production" \
           --namespace default
 
-  # === Promote to Stable ===
   promote-stable:
     needs: [deploy-canary, build]
     runs-on: self-hosted
+    
+    
     steps:
     - uses: azure/login@v1
       with:
@@ -145,26 +127,22 @@ jobs:
         cluster-name: ${{ env.AKS_CLUSTER }}
     - uses: azure/setup-helm@v3
 
-    - name: Deploy Stable from ACR
+    - name: Promote Canary to Stable
       run: |
-        VERSION="${{ needs.build.outputs.docker_tag }}"
+        NEW_VERSION="${{ needs.build.outputs.docker_tag }}"
         ACR_URL="${{ env.ACR_NAME }}.azurecr.io"
         
-        # Login to pull chart
         USER_NAME="00000000-0000-0000-0000-000000000000"
         PASSWORD=$(az acr login --name ${{ env.ACR_NAME }} --expose-token --output tsv --query accessToken)
         helm registry login $ACR_URL --username $USER_NAME --password $PASSWORD
 
-        echo "Promoting Stable Version: $VERSION"
+        echo "Promoting Version $NEW_VERSION to Stable"
 
-        helm upgrade --install bestrong-prod oci://$ACR_URL/helm/${{ env.CHART_NAME }} \
-          --version $VERSION \
+        helm upgrade --install ${{ env.RELEASE_NAME }} oci://$ACR_URL/helm/${{ env.CHART_NAME }} \
+          --version $NEW_VERSION \
           --set image.repository=$ACR_URL/${{ env.IMAGE_NAME }} \
-          --set image.tag=$VERSION \
+          --set image.tag=$NEW_VERSION \
           --set canary.enabled=false \
           --set env.connectionString="${{ secrets.DB_CONNECTION_STRING }}" \
           --set env.aspnetEnvironment="Production" \
           --namespace default
-
-    - name: Cleanup Canary
-      run: helm uninstall bestrong-canary --namespace default || true

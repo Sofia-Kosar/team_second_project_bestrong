@@ -1,0 +1,29 @@
+{{- if .Values.canary.enabled -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-canary
+  labels:
+    app: {{ .Release.Name }}-canary
+spec:
+  replicas: 1 
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}-canary
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}-canary
+    spec:
+      containers:
+        - name: {{ .Release.Name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.canary.image.tag }}" 
+          ports:
+            - name: http
+              containerPort: 5000 
+              protocol: TCP
+          env:
+            
+            - name: VERSION_TYPE
+              value: "canary"
+{{- end }}
