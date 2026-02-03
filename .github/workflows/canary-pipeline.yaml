@@ -121,7 +121,7 @@ jobs:
         echo "Deploying Canary Version: $VERSION"
 
         # NOTE: Path is now oci://...
-        helm upgrade --install bestrong-canary oci://$ACR_URL/helm/${{ env.CHART_NAME }} \
+        helm upgrade --install bestrong-prod oci://$ACR_URL/helm/${{ env.CHART_NAME }} \
           --version $VERSION \
           --set image.repository=$ACR_URL/${{ env.IMAGE_NAME }} \
           --set image.tag=$VERSION \
