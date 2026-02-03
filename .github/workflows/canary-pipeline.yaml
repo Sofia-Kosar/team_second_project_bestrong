@@ -11,6 +11,7 @@ env:
   AKS_CLUSTER: bestrong-aks-cluster
   RESOURCE_GROUP: bestrong-rg
   IMAGE_NAME: bestrong-api
+  APP_VERSION: "1.0" # Change this when you want a new major version (e.g. 1.1)
 
 jobs:
   # === Terraform ===
@@ -52,6 +53,9 @@ jobs:
   build:
     needs: infrastructure 
     runs-on: self-hosted
+    outputs:
+      docker_tag: ${{ steps.calc_version.outputs.DOCKER_TAG }}
+
     steps:
     - uses: actions/checkout@v3
     
@@ -60,9 +64,19 @@ jobs:
       with:
         creds: ${{ secrets.AZURE_CREDENTIALS }}
     
+    - name: Calculate Version
+      id: calc_version
+      run: |
+        VERSION="${{ env.APP_VERSION }}.${{ github.run_number }}"
+        echo "DOCKER_TAG=$VERSION" >> $GITHUB_OUTPUT
+        echo "Generated Version: $VERSION"
+
     - name: Build and Push Docker
       run: |
-        az acr build --image ${{ env.IMAGE_NAME }}:${{ github.sha }} \
+        # Use the version from the previous step
+        VERSION="${{ steps.calc_version.outputs.DOCKER_TAG }}"
+        
+        az acr build --image ${{ env.IMAGE_NAME }}:$VERSION \
           --registry ${{ env.ACR_NAME }} \
           --file Dockerfile .
 
@@ -83,25 +97,21 @@ jobs:
 
     - name: Deploy Canary
       run: |
+        VERSION="${{ needs.build.outputs.docker_tag }}"
+        echo "Deploying Canary Version: $VERSION"
+
         helm upgrade --install bestrong-canary ./charts/bestrong-api \
           --set image.repository=${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }} \
-          --set image.tag=${{ github.sha }} \
+          --set image.tag=$VERSION \
           --set canary.enabled=true \
           --set canary.weight=20 \
           --set env.connectionString="${{ secrets.DB_CONNECTION_STRING }}" \
+          --set env.aspnetEnvironment="Production" \
           --namespace default
-
-  # # === Manual Approval ===
-  # approve:
-  #   needs: deploy-canary
-  #   runs-on: self-hosted
-  #   environment: Production
-  #   steps:
-  #     - run: echo "Canary is running. Check it properly!"
 
   # === Promote to Stable ===
   promote-stable:
-    needs: deploy-canary
+    needs: [deploy-canary, build] # Must wait for canary AND need build output
     runs-on: self-hosted
     steps:
     - uses: actions/checkout@v3
@@ -116,11 +126,15 @@ jobs:
 
     - name: Deploy Stable
       run: |
+        VERSION="${{ needs.build.outputs.docker_tag }}"
+        echo "Promoting Stable Version: $VERSION"
+
         helm upgrade --install bestrong-prod ./charts/bestrong-api \
           --set image.repository=${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }} \
-          --set image.tag=${{ github.sha }} \
+          --set image.tag=$VERSION \
           --set canary.enabled=false \
           --set env.connectionString="${{ secrets.DB_CONNECTION_STRING }}" \
+          --set env.aspnetEnvironment="Production" \
           --namespace default
 
     - name: Cleanup Canary
