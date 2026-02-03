@@ -11,6 +11,8 @@ env:
   AKS_CLUSTER: bestrong-aks-cluster
   RESOURCE_GROUP: bestrong-rg
   IMAGE_NAME: bestrong-api
+  CHART_NAME: bestrong-api
+  APP_VERSION: "1.0"
 
 jobs:
   # === Terraform ===
@@ -48,10 +50,13 @@ jobs:
         if: github.ref == 'refs/heads/main'
         run: terraform apply -auto-approve tfplan
 
-  # === Build ===
+  # === Build Docker & Helm ===
   build:
     needs: infrastructure 
     runs-on: self-hosted
+    outputs:
+      docker_tag: ${{ steps.calc_version.outputs.DOCKER_TAG }}
+
     steps:
     - uses: actions/checkout@v3
     
@@ -60,52 +65,40 @@ jobs:
       with:
         creds: ${{ secrets.AZURE_CREDENTIALS }}
     
+    - uses: azure/setup-helm@v3
+
+    # 1. Calculate Version
+    - name: Calculate Version
+      id: calc_version
+      run: |
+        VERSION="${{ env.APP_VERSION }}.${{ github.run_number }}"
+        echo "DOCKER_TAG=$VERSION" >> $GITHUB_OUTPUT
+        echo "Generated Version: $VERSION"
+
+    # 2. Build & Push Docker Image
     - name: Build and Push Docker
       run: |
-        az acr build --image ${{ env.IMAGE_NAME }}:${{ github.sha }} \
+        VERSION="${{ steps.calc_version.outputs.DOCKER_TAG }}"
+        az acr build --image ${{ env.IMAGE_NAME }}:$VERSION \
           --registry ${{ env.ACR_NAME }} \
           --file Dockerfile .
 
+    # 3. Build & Push Helm Chart
+    - name: Package and Push Helm Chart
+      run: |
+        VERSION="${{ steps.calc_version.outputs.DOCKER_TAG }}"
+        ACR_URL="${{ env.ACR_NAME }}.azurecr.io"
+        USER_NAME="00000000-0000-0000-0000-000000000000"
+        PASSWORD=$(az acr login --name ${{ env.ACR_NAME }} --expose-token --output tsv --query accessToken)
+        helm registry login $ACR_URL --username $USER_NAME --password $PASSWORD
+        helm package ./charts/${{ env.CHART_NAME }} --version $VERSION --app-version $VERSION
+        helm push ${{ env.CHART_NAME }}-$VERSION.tgz oci://$ACR_URL/helm
 
-  # === Publish Helm Chart ===
-  publish-chart:
-    needs: build 
-    runs-on: self-hosted
-    steps:
-      - uses: actions/checkout@v3
-      
-      - name: Azure Login
-        uses: azure/login@v1
-        with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
-
-      - name: Install Helm
-        run: |
-          curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-
-      - name: Login to ACR (Helm OCI)
-        run: |
-          az acr login --name ${{ env.ACR_NAME }} --expose-token \
-            --output tsv --query accessToken | \
-            helm registry login ${{ env.ACR_NAME }}.azurecr.io \
-            --username 00000000-0000-0000-0000-000000000000 \
-            --password-stdin
-
-      - name: Package and Push Helm Chart
-        run: |
-          CHART_VERSION="1.0.${{ github.run_number }}"
-          
-          helm package ./charts/bestrong-api --version $CHART_VERSION
-          
-          helm push bestrong-api-$CHART_VERSION.tgz oci://${{ env.ACR_NAME }}.azurecr.io/helm
-
-
- # === Deploy Canary ===
+  # === Deploy Canary ===
   deploy-canary:
-    needs: [build, publish-chart]  
+    needs: build
     runs-on: self-hosted
     steps:
-    - uses: actions/checkout@v3
     - uses: azure/login@v1
       with:
         creds: ${{ secrets.AZURE_CREDENTIALS }}
@@ -115,41 +108,34 @@ jobs:
         cluster-name: ${{ env.AKS_CLUSTER }}
     - uses: azure/setup-helm@v3
 
-    - name: Login to ACR (Helm OCI)
+    - name: Deploy Canary from ACR
       run: |
-        az acr login --name ${{ env.ACR_NAME }} --expose-token \
-          --output tsv --query accessToken | \
-          helm registry login ${{ env.ACR_NAME }}.azurecr.io \
-          --username 00000000-0000-0000-0000-000000000000 \
-          --password-stdin
+        VERSION="${{ needs.build.outputs.docker_tag }}"
+        ACR_URL="${{ env.ACR_NAME }}.azurecr.io"
+        
+        # We need to login to pull the chart
+        USER_NAME="00000000-0000-0000-0000-000000000000"
+        PASSWORD=$(az acr login --name ${{ env.ACR_NAME }} --expose-token --output tsv --query accessToken)
+        helm registry login $ACR_URL --username $USER_NAME --password $PASSWORD
 
-    - name: Deploy Canary (from ACR)
-      run: |
-        CHART_VERSION="1.0.${{ github.run_number }}"
+        echo "Deploying Canary Version: $VERSION"
 
-        helm upgrade --install bestrong-canary oci://${{ env.ACR_NAME }}.azurecr.io/helm/bestrong-api \
-          --version $CHART_VERSION \
-          --set image.repository=${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }} \
-          --set image.tag=${{ github.sha }} \
+        # NOTE: Path is now oci://...
+        helm upgrade --install bestrong-canary oci://$ACR_URL/helm/${{ env.CHART_NAME }} \
+          --version $VERSION \
+          --set image.repository=$ACR_URL/${{ env.IMAGE_NAME }} \
+          --set image.tag=$VERSION \
           --set canary.enabled=true \
           --set canary.weight=20 \
           --set env.connectionString="${{ secrets.DB_CONNECTION_STRING }}" \
+          --set env.aspnetEnvironment="Production" \
           --namespace default
-
-  # # === Manual Approval ===
-  # approve:
-  #   needs: deploy-canary
-  #   runs-on: self-hosted
-  #   environment: Production
-  #   steps:
-  #     - run: echo "Canary is running. Check it properly!"
 
   # === Promote to Stable ===
   promote-stable:
-    needs: deploy-canary 
+    needs: [deploy-canary, build]
     runs-on: self-hosted
     steps:
-    - uses: actions/checkout@v3
     - uses: azure/login@v1
       with:
         creds: ${{ secrets.AZURE_CREDENTIALS }}
@@ -159,24 +145,25 @@ jobs:
         cluster-name: ${{ env.AKS_CLUSTER }}
     - uses: azure/setup-helm@v3
 
-    - name: Login to ACR (Helm OCI)
+    - name: Deploy Stable from ACR
       run: |
-        az acr login --name ${{ env.ACR_NAME }} --expose-token \
-          --output tsv --query accessToken | \
-          helm registry login ${{ env.ACR_NAME }}.azurecr.io \
-          --username 00000000-0000-0000-0000-000000000000 \
-          --password-stdin
+        VERSION="${{ needs.build.outputs.docker_tag }}"
+        ACR_URL="${{ env.ACR_NAME }}.azurecr.io"
+        
+        # Login to pull chart
+        USER_NAME="00000000-0000-0000-0000-000000000000"
+        PASSWORD=$(az acr login --name ${{ env.ACR_NAME }} --expose-token --output tsv --query accessToken)
+        helm registry login $ACR_URL --username $USER_NAME --password $PASSWORD
 
-    - name: Deploy Stable (from ACR)
-      run: |
-        CHART_VERSION="1.0.${{ github.run_number }}"
+        echo "Promoting Stable Version: $VERSION"
 
-        helm upgrade --install bestrong-prod oci://${{ env.ACR_NAME }}.azurecr.io/helm/bestrong-api \
-          --version $CHART_VERSION \
-          --set image.repository=${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }} \
-          --set image.tag=${{ github.sha }} \
+        helm upgrade --install bestrong-prod oci://$ACR_URL/helm/${{ env.CHART_NAME }} \
+          --version $VERSION \
+          --set image.repository=$ACR_URL/${{ env.IMAGE_NAME }} \
+          --set image.tag=$VERSION \
           --set canary.enabled=false \
           --set env.connectionString="${{ secrets.DB_CONNECTION_STRING }}" \
+          --set env.aspnetEnvironment="Production" \
           --namespace default
 
     - name: Cleanup Canary
