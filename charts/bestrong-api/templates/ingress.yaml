@@ -9,17 +9,22 @@ spec:
   entryPoints:
     - websecure
   routes:
-    - match: Host(`{{ .Values.ingress.host }}`) 
+    - match: Host(`{{ .Values.ingress.host }}`)
       kind: Rule
-      
-      priority: {{ if .Values.canary.enabled }}50{{ else }}10{{ end }}
-      
       services:
-        {{- if .Values.canary.enabled }}
-        - name: {{ .Release.Name }}-weighted
-          kind: TraefikService
-        {{- else }}
+        
         - name: {{ .Release.Name }}
           port: {{ .Values.service.port }}
+          {{- if .Values.canary.enabled }}
+          weight: {{ sub 100 .Values.canary.weight }}
+          {{- end }}
+
+        
+        {{- if .Values.canary.enabled }}
+        - name: {{ .Release.Name }}-canary
+          port: {{ .Values.service.port }}
+          weight: {{ .Values.canary.weight }}
         {{- end }}
+  tls:
+    secretName: {{ .Release.Name }}-tls
 {{- end }}
