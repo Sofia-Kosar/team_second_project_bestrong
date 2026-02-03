@@ -66,9 +66,43 @@ jobs:
           --registry ${{ env.ACR_NAME }} \
           --file Dockerfile .
 
-  # === Deploy Canary ===
+
+  # === Publish Helm Chart ===
+  publish-chart:
+    needs: build 
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Install Helm
+        run: |
+          curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+
+      - name: Login to ACR (Helm OCI)
+        run: |
+          az acr login --name ${{ env.ACR_NAME }} --expose-token \
+            --output tsv --query accessToken | \
+            helm registry login ${{ env.ACR_NAME }}.azurecr.io \
+            --username 00000000-0000-0000-0000-000000000000 \
+            --password-stdin
+
+      - name: Package and Push Helm Chart
+        run: |
+          CHART_VERSION="1.0.${{ github.run_number }}"
+          
+          helm package ./charts/bestrong-api --version $CHART_VERSION
+          
+          helm push bestrong-api-$CHART_VERSION.tgz oci://${{ env.ACR_NAME }}.azurecr.io/helm
+
+
+ # === Deploy Canary ===
   deploy-canary:
-    needs: build
+    needs: [build, publish-chart]  
     runs-on: self-hosted
     steps:
     - uses: actions/checkout@v3
@@ -81,9 +115,20 @@ jobs:
         cluster-name: ${{ env.AKS_CLUSTER }}
     - uses: azure/setup-helm@v3
 
-    - name: Deploy Canary
+    - name: Login to ACR (Helm OCI)
       run: |
-        helm upgrade --install bestrong-canary ./charts/bestrong-api \
+        az acr login --name ${{ env.ACR_NAME }} --expose-token \
+          --output tsv --query accessToken | \
+          helm registry login ${{ env.ACR_NAME }}.azurecr.io \
+          --username 00000000-0000-0000-0000-000000000000 \
+          --password-stdin
+
+    - name: Deploy Canary (from ACR)
+      run: |
+        CHART_VERSION="1.0.${{ github.run_number }}"
+
+        helm upgrade --install bestrong-canary oci://${{ env.ACR_NAME }}.azurecr.io/helm/bestrong-api \
+          --version $CHART_VERSION \
           --set image.repository=${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }} \
           --set image.tag=${{ github.sha }} \
           --set canary.enabled=true \
@@ -101,7 +146,7 @@ jobs:
 
   # === Promote to Stable ===
   promote-stable:
-    needs: deploy-canary
+    needs: deploy-canary 
     runs-on: self-hosted
     steps:
     - uses: actions/checkout@v3
@@ -114,9 +159,20 @@ jobs:
         cluster-name: ${{ env.AKS_CLUSTER }}
     - uses: azure/setup-helm@v3
 
-    - name: Deploy Stable
+    - name: Login to ACR (Helm OCI)
       run: |
-        helm upgrade --install bestrong-prod ./charts/bestrong-api \
+        az acr login --name ${{ env.ACR_NAME }} --expose-token \
+          --output tsv --query accessToken | \
+          helm registry login ${{ env.ACR_NAME }}.azurecr.io \
+          --username 00000000-0000-0000-0000-000000000000 \
+          --password-stdin
+
+    - name: Deploy Stable (from ACR)
+      run: |
+        CHART_VERSION="1.0.${{ github.run_number }}"
+
+        helm upgrade --install bestrong-prod oci://${{ env.ACR_NAME }}.azurecr.io/helm/bestrong-api \
+          --version $CHART_VERSION \
           --set image.repository=${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }} \
           --set image.tag=${{ github.sha }} \
           --set canary.enabled=false \
