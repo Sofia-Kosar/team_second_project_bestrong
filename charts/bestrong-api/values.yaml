@@ -19,7 +19,8 @@ ingress:
 
 canary:
   enabled: false
-  weight: 10
+  weight: 20
+  stableServiceName: "bestrong-prod"
 
 # certManager:
 #   enabled: true

@@ -1,0 +1,18 @@
+{{- if .Values.canary.enabled }}
+apiVersion: traefik.io/v1alpha1
+kind: TraefikService
+metadata:
+  name: {{ .Release.Name }}-weighted
+  labels:
+    app: {{ .Release.Name }}
+spec:
+  weighted:
+    services:
+      - name: {{ .Release.Name }}
+        port: {{ .Values.service.port }}
+        weight: {{ .Values.canary.weight }}
+        
+      - name: {{ .Values.canary.stableServiceName }}
+        port: {{ .Values.service.port }}
+        weight: {{ sub 100 .Values.canary.weight }}
+{{- end }}
