@@ -94,7 +94,7 @@ jobs:
         helm package ./charts/${{ env.CHART_NAME }} --version $VERSION --app-version $VERSION
         helm push ${{ env.CHART_NAME }}-$VERSION.tgz oci://$ACR_URL/helm
 
-  # === Deploy Canary ===
+  # === Deploy Canary ====
   deploy-canary:
     needs: build
     runs-on: self-hosted
