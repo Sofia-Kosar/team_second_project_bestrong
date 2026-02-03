@@ -1,0 +1,16 @@
+{{- if and .Values.ingress.enabled .Values.certManager.enabled -}}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ .Release.Name }}-cert
+  labels:
+    app: {{ .Release.Name }}
+spec:
+  secretName: {{ .Release.Name }}-tls
+  dnsNames:
+    - {{ if .Values.canary.enabled }}canary-{{ .Values.ingress.host }}{{ else }}{{ .Values.ingress.host }}{{ end }}
+  issuerRef:
+    name: {{ .Values.certManager.clusterIssuer }}
+    kind: ClusterIssuer
+{{- end }}
+

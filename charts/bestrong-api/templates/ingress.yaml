@@ -7,11 +7,13 @@ metadata:
     app: {{ .Release.Name }}
 spec:
   entryPoints:
-    - web
+    - websecure
   routes:
     - match: Host(`{{ if .Values.canary.enabled }}canary-{{ .Values.ingress.host }}{{ else }}{{ .Values.ingress.host }}{{ end }}`)
       kind: Rule
       services:
         - name: {{ .Release.Name }}
           port: {{ .Values.service.port }}
+  tls:
+    secretName: {{ .Release.Name }}-tls
 {{- end }}

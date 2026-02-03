@@ -21,9 +21,9 @@ canary:
   enabled: false
   weight: 10
 
-# certManager:
-#   enabled: true
-#   clusterIssuer: "selfsigned-issuer"
+certManager:
+  enabled: true
+  clusterIssuer: "selfsigned-issuer"
 
 env:
   ASPNETCORE_ENVIRONMENT: "Development"
