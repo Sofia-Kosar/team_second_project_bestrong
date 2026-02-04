@@ -222,5 +222,5 @@ jobs:
           --set env.aspnetEnvironment="Production" \
           --namespace default
 
-    - name: Cleanup Canary
-      run: helm uninstall bestrong-canary --namespace default || true
+    # - name: Cleanup Canary
+    #   run: helm uninstall bestrong-canary --namespace default || true
