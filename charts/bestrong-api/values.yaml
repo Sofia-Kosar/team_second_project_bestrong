@@ -18,7 +18,13 @@ ingress:
   
 
 canary:
+  # enabled: true = this is a canary release (deployed to canary.hostname)
+  # enabled: false = this is a production release (deployed to main hostname)
   enabled: false
+  
+  # weight: percentage of traffic to send to canary (0-100)
+  # When weight > 0, prod release creates TraefikService for weighted routing
+  # Example: weight=20 means 20% to canary, 80% to prod
   weight: 10
 
 certManager:

@@ -95,6 +95,8 @@ jobs:
         helm push ${{ env.CHART_NAME }}-$VERSION.tgz oci://$ACR_URL/helm
 
   # === Deploy Canary ====
+  # Deploys a canary release to canary.hostname for testing
+  # This release receives direct traffic for validation
   deploy-canary:
     needs: build
     runs-on: self-hosted
@@ -132,6 +134,11 @@ jobs:
           --namespace default
 
   # === Promote to Stable ===
+  # Updates prod release with canary.weight > 0
+  # This enables weighted traffic distribution via TraefikService:
+  # - 80% traffic → bestrong-prod (stable)
+  # - 20% traffic → bestrong-canary (new version)
+  # Both canary and prod continue running for gradual rollout
   promote-stable:
     needs: [deploy-canary, build]
     runs-on: self-hosted
@@ -145,7 +152,7 @@ jobs:
         cluster-name: ${{ env.AKS_CLUSTER }}
     - uses: azure/setup-helm@v3
 
-    - name: Deploy Stable from ACR
+    - name: Deploy Stable with Weighted Routing
       run: |
         VERSION="${{ needs.build.outputs.docker_tag }}"
         ACR_URL="${{ env.ACR_NAME }}.azurecr.io"
@@ -155,13 +162,62 @@ jobs:
         PASSWORD=$(az acr login --name ${{ env.ACR_NAME }} --expose-token --output tsv --query accessToken)
         helm registry login $ACR_URL --username $USER_NAME --password $PASSWORD
 
-        echo "Promoting Stable Version: $VERSION"
+        echo "Promoting Stable Version: $VERSION with Canary Weight: 20"
 
+        # Deploy prod with canary.weight > 0 to enable weighted traffic distribution
         helm upgrade --install bestrong-prod oci://$ACR_URL/helm/${{ env.CHART_NAME }} \
           --version $VERSION \
           --set image.repository=$ACR_URL/${{ env.IMAGE_NAME }} \
           --set image.tag=$VERSION \
           --set canary.enabled=false \
+          --set canary.weight=20 \
+          --set env.connectionString="${{ secrets.DB_CONNECTION_STRING }}" \
+          --set env.aspnetEnvironment="Production" \
+          --namespace default
+
+    - name: Wait for Monitoring
+      run: |
+        echo "Canary is receiving 20% of traffic. Monitor metrics before full rollout..."
+        echo "To complete rollout: set canary.weight=0 and cleanup canary deployment"
+        # Optional: sleep 300  # Wait 5 minutes for monitoring
+
+  # === Complete Rollout ===
+  # Final step: moves 100% traffic to stable and removes canary
+  # This step should be triggered manually via workflow_dispatch
+  # after monitoring canary performance with weighted traffic
+  complete-rollout:
+    needs: [promote-stable, build]
+    runs-on: self-hosted
+    if: github.event_name == 'workflow_dispatch'  # Only run manually
+    steps:
+    - uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+    - uses: azure/aks-set-context@v3
+      with:
+        resource-group: ${{ env.RESOURCE_GROUP }}
+        cluster-name: ${{ env.AKS_CLUSTER }}
+    - uses: azure/setup-helm@v3
+
+    - name: Full Rollout - 100% Traffic to Stable
+      run: |
+        VERSION="${{ needs.build.outputs.docker_tag }}"
+        ACR_URL="${{ env.ACR_NAME }}.azurecr.io"
+        
+        # Login to pull chart
+        USER_NAME="00000000-0000-0000-0000-000000000000"
+        PASSWORD=$(az acr login --name ${{ env.ACR_NAME }} --expose-token --output tsv --query accessToken)
+        helm registry login $ACR_URL --username $USER_NAME --password $PASSWORD
+
+        echo "Complete Rollout: 100% traffic to stable version $VERSION"
+
+        # Update prod with canary.weight=0 to disable weighted routing
+        helm upgrade --install bestrong-prod oci://$ACR_URL/helm/${{ env.CHART_NAME }} \
+          --version $VERSION \
+          --set image.repository=$ACR_URL/${{ env.IMAGE_NAME }} \
+          --set image.tag=$VERSION \
+          --set canary.enabled=false \
+          --set canary.weight=0 \
           --set env.connectionString="${{ secrets.DB_CONNECTION_STRING }}" \
           --set env.aspnetEnvironment="Production" \
           --namespace default
