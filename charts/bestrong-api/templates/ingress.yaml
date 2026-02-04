@@ -1,4 +1,10 @@
 {{- if .Values.ingress.enabled -}}
+# Canary Deployment Strategy:
+# 1. Canary Release (canary.enabled=true):
+#    - Accessible via canary.hostname for direct testing
+# 2. Prod Release (canary.enabled=false):
+#    - When canary.weight > 0: Uses TraefikService for weighted routing
+#    - When canary.weight = 0: Direct routing to prod service only
 apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
@@ -9,11 +15,30 @@ spec:
   entryPoints:
     - websecure
   routes:
-    - match: Host(`{{ if .Values.canary.enabled }}canary-{{ .Values.ingress.host }}{{ else }}{{ .Values.ingress.host }}{{ end }}`)
+{{- if .Values.canary.enabled }}
+    # Canary release: separate hostname for direct testing
+    - match: Host(`canary.{{ .Values.ingress.host }}`)
       kind: Rule
       services:
         - name: {{ .Release.Name }}
           port: {{ .Values.service.port }}
+{{- else }}
+    # Production release: main hostname with weighted routing
+    - match: Host(`{{ .Values.ingress.host }}`)
+      kind: Rule
+      {{- if gt (.Values.canary.weight | int) 0 }}
+      # Use TraefikService for weighted traffic distribution
+      # Example: weight=20 means 20% → canary, 80% → prod
+      services:
+        - name: bestrong-weighted
+          kind: TraefikService
+      {{- else }}
+      # No canary active, use direct service (100% traffic)
+      services:
+        - name: {{ .Release.Name }}
+          port: {{ .Values.service.port }}
+      {{- end }}
+{{- end }}
   tls:
     secretName: {{ .Release.Name }}-tls
 {{- end }}
