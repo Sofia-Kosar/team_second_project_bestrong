@@ -18,8 +18,8 @@ ingress:
   
 
 canary:
-  enabled: false
-  weight: 20
+  enabled: true
+  weight: 10
   stableServiceName: "bestrong-prod"
   image:
     tag: "v2.0"
