@@ -31,3 +31,7 @@ certManager:
 env:
   ASPNETCORE_ENVIRONMENT: "Development"
   connectionString: "Data Source=App.db"
+
+
+dashboard:
+  enabled: true

@@ -106,6 +106,7 @@ jobs:
           --set canary.enabled=true \
           --set canary.weight=20 \
           --set canary.stableServiceName=${{ env.PROD_RELEASE_NAME }} \
+          --set dashboard.enabled=false \
           --set env.connectionString="${{ secrets.DB_CONNECTION_STRING }}" \
           --set env.aspnetEnvironment="Production" \
           --namespace default
