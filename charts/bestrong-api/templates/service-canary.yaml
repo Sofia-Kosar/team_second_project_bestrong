@@ -1,0 +1,17 @@
+{{- if .Values.canary.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-canary
+  labels:
+    app: {{ .Release.Name }}-canary
+spec:
+  type: ClusterIP
+  ports:
+    - port: 80              
+      targetPort: 5000     
+      protocol: TCP
+      name: http
+  selector:
+    app: {{ .Release.Name }}-canary 
+{{- end }}
