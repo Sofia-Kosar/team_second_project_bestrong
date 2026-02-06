@@ -29,6 +29,10 @@ canary:
 
 postgresql:
   enabled: true
+  image:
+    registry: acrbestrong01.azurecr.io
+    repository: bitnami/postgresql
+    tag: 16.2.0
   auth:
     username: bestrong_user
     password: "StrongPassword123!"
