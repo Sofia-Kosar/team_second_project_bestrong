@@ -7,7 +7,7 @@ on:
 
 env:
   TF_WORKING_DIR: './terraform'
-  ACR_NAME: bestrongacr958204
+  ACR_NAME: acrbestrong01
   AKS_CLUSTER: aks-bestrong-demo
   RESOURCE_GROUP: rg-bestrong-demo
   IMAGE_NAME: bestrong-api
