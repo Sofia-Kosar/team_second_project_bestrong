@@ -128,6 +128,7 @@ jobs:
           --set image.repository=$ACR_URL/${{ env.IMAGE_NAME }} \
           --set image.tag=$VERSION \
           --set canary.enabled=true \
+          --set postgresql.enabled=false \
           --set canary.weight=20 \
           --set env.connectionString="${{ secrets.DB_CONNECTION_STRING }}" \
           --set env.aspnetEnvironment="Production" \
