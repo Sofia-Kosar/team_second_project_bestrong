@@ -38,6 +38,11 @@ postgresql:
       enabled: true
       size: 1Gi
 
+
+certManager:
+  enabled: true
+  clusterIssuer: "selfsigned-issuer"
+
 env:
   ASPNETCORE_ENVIRONMENT: "Production"
   connectionString: "Host=bestrong-prod-postgresql;Port=5432;Database=bestrong_db;Username=bestrong_user;Password=StrongPassword123!;"
