@@ -22,7 +22,7 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy | default "IfNotPresent" }}
           env:
            - name: DB_CONNECTION_STRING
-              value: |
+             value: |
                 {{- $dbHost := "" -}}
                 {{- if .Values.canary.enabled -}}
                   {{- /* CANARY: Connect to STABLE DB */ -}}
