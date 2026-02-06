@@ -1,10 +1,4 @@
 {{- if .Values.ingress.enabled -}}
-# Canary Deployment Strategy:
-# 1. Canary Release (canary.enabled=true):
-#    - Accessible via canary.hostname for direct testing
-# 2. Prod Release (canary.enabled=false):
-#    - When canary.weight > 0: Uses TraefikService for weighted routing
-#    - When canary.weight = 0: Direct routing to prod service only
 apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
@@ -16,31 +10,30 @@ spec:
     - websecure
   routes:
 {{- if .Values.canary.enabled }}
-    # Canary release: separate hostname for direct testing
+    # === CANARY RELEASE ===
+    # Тут ми налаштовуємо окремий домен (canary.bestrong...) 
+    # Він веде ПРЯМО на canary-сервіс, щоб тестувати його ізольовано.
     - match: Host(`canary.{{ .Values.ingress.host }}`)
       kind: Rule
-      
-      priority: {{ if .Values.canary.enabled }}50{{ else }}10{{ end }}
-      
+      priority: 50
       services:
-        {{- if .Values.canary.enabled }}
-        - name: {{ .Release.Name }}-weighted
-          kind: TraefikService
-        {{- else }}
-        - name: {{ .Release.Name }}
+        - name: {{ .Release.Name }}   # Це вказує на bestrong-canary
           port: {{ .Values.service.port }}
+
 {{- else }}
-    # Production release: main hostname with weighted routing
+    # === PROD RELEASE ===
+    # Це основний домен. Тут працює розподіл трафіку.
     - match: Host(`{{ .Values.ingress.host }}`)
       kind: Rule
+      priority: 10
+      
       {{- if gt (.Values.canary.weight | int) 0 }}
-      # Use TraefikService for weighted traffic distribution
-      # Example: weight=20 means 20% → canary, 80% → prod
+      # Якщо вага > 0, використовуємо TraefikService для розподілу (20/80)
       services:
-        - name: bestrong-weighted
+        - name: bestrong-weighted   # Ім'я має збігатися з тим, що в traefik-service.yaml
           kind: TraefikService
       {{- else }}
-      # No canary active, use direct service (100% traffic)
+      # Якщо вага = 0 (або канарки немає), йдемо прямо на прод
       services:
         - name: {{ .Release.Name }}
           port: {{ .Values.service.port }}
