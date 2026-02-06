@@ -15,7 +15,6 @@ service:
 ingress:
   enabled: true
   host: "40.121.187.218.nip.io"
-  
 
 canary:
   # enabled: true = this is a canary release (deployed to canary.hostname)
@@ -26,11 +25,19 @@ canary:
   # When weight > 0, prod release creates TraefikService for weighted routing
   # Example: weight=20 means 20% to canary, 80% to prod
   weight: 10
+  stableServiceName: "bestrong-prod"
 
-certManager:
+postgresql:
   enabled: true
-  clusterIssuer: "selfsigned-issuer"
+  auth:
+    username: bestrong_user
+    password: "StrongPassword123!"
+    database: bestrong_db
+  primary:
+    persistence:
+      enabled: true
+      size: 1Gi
 
 env:
-  ASPNETCORE_ENVIRONMENT: "Development"
-  connectionString: "Data Source=App.db"
+  ASPNETCORE_ENVIRONMENT: "Production"
+  connectionString: "Host=bestrong-prod-postgresql;Port=5432;Database=bestrong_db;Username=bestrong_user;Password=StrongPassword123!;"

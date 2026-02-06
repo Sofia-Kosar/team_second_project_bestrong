@@ -19,7 +19,14 @@ spec:
     # Canary release: separate hostname for direct testing
     - match: Host(`canary.{{ .Values.ingress.host }}`)
       kind: Rule
+      
+      priority: {{ if .Values.canary.enabled }}50{{ else }}10{{ end }}
+      
       services:
+        {{- if .Values.canary.enabled }}
+        - name: {{ .Release.Name }}-weighted
+          kind: TraefikService
+        {{- else }}
         - name: {{ .Release.Name }}
           port: {{ .Values.service.port }}
 {{- else }}
