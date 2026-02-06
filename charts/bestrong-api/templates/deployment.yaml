@@ -22,7 +22,16 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy | default "IfNotPresent" }}
           env:
             - name: DB_CONNECTION_STRING
-              value: "Host={{ .Release.Name }}-postgresql;Port=5432;Database={{ .Values.postgresql.auth.database }};Username={{ .Values.postgresql.auth.username }};Password={{ .Values.postgresql.auth.password }};"
+             value: |
+                {{- $dbHost := "" -}}
+                {{- if .Values.canary.enabled -}}
+                  {{- /* CANARY: Force connection to Stable DB (bestrong-prod-postgresql) */ -}}
+                  {{- $dbHost = printf "%s-postgresql" .Values.canary.stableReleaseName -}}
+                {{- else -}}
+                  {{- /* PROD: Connect to local DB service */ -}}
+                  {{- $dbHost = printf "%s-postgresql" .Release.Name -}}
+                {{- end -}}
+                Host={{ $dbHost }};Port=5432;Database={{ .Values.postgresql.auth.database }};Username={{ .Values.postgresql.auth.username }};Password={{ .Values.postgresql.auth.password }};
             - name: ASPNETCORE_ENVIRONMENT
               value: {{ .Values.env.ASPNETCORE_ENVIRONMENT | quote }}
           ports:
