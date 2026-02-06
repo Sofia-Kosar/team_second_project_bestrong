@@ -21,14 +21,14 @@ spec:
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy | default "IfNotPresent" }}
           env:
-            - name: DB_CONNECTION_STRING
-             value: |
+           - name: DB_CONNECTION_STRING
+              value: |
                 {{- $dbHost := "" -}}
                 {{- if .Values.canary.enabled -}}
-                  {{- /* CANARY: Force connection to Stable DB (bestrong-prod-postgresql) */ -}}
+                  {{- /* CANARY: Connect to STABLE DB */ -}}
                   {{- $dbHost = printf "%s-postgresql" .Values.canary.stableReleaseName -}}
                 {{- else -}}
-                  {{- /* PROD: Connect to local DB service */ -}}
+                  {{- /* PROD: Connect to LOCAL DB */ -}}
                   {{- $dbHost = printf "%s-postgresql" .Release.Name -}}
                 {{- end -}}
                 Host={{ $dbHost }};Port=5432;Database={{ .Values.postgresql.auth.database }};Username={{ .Values.postgresql.auth.username }};Password={{ .Values.postgresql.auth.password }};
