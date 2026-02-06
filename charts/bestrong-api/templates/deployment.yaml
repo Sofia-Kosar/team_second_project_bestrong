@@ -20,9 +20,9 @@ spec:
         - name: api
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy | default "IfNotPresent" }}
-          env:
-           - name: DB_CONNECTION_STRING
-             value: |
+         env:
+            - name: DB_CONNECTION_STRING
+              value: |
                 {{- $dbHost := "" -}}
                 {{- if .Values.canary.enabled -}}
                   {{- /* CANARY: Connect to STABLE DB */ -}}
