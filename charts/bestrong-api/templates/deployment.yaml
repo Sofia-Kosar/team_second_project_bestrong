@@ -21,8 +21,8 @@ spec:
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy | default "IfNotPresent" }}
           env:
-           - name: DB_CONNECTION_STRING
-             value: |
+            - name: DB_CONNECTION_STRING
+              value: |
                 {{- $dbHost := "" -}}
                 {{- if .Values.canary.enabled -}}
                   {{- /* CANARY: Connect to STABLE DB */ -}}
@@ -32,7 +32,7 @@ spec:
                   {{- $dbHost = printf "%s-postgresql" .Release.Name -}}
                 {{- end -}}
                 Host={{ $dbHost }};Port=5432;Database={{ .Values.postgresql.auth.database }};Username={{ .Values.postgresql.auth.username }};Password={{ .Values.postgresql.auth.password }};
-           - name: ASPNETCORE_ENVIRONMENT
-             value: {{ .Values.env.ASPNETCORE_ENVIRONMENT | quote }}
+            - name: ASPNETCORE_ENVIRONMENT
+              value: {{ .Values.env.ASPNETCORE_ENVIRONMENT | quote }}
           ports:
             - containerPort: {{ .Values.service.targetPort }}
