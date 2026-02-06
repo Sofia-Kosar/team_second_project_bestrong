@@ -14,7 +14,7 @@ service:
 
 ingress:
   enabled: true
-  host: "40.121.187.218.nip.io"
+  host: "20.87.244.28.nip.io"
 
 canary:
   # enabled: true = this is a canary release (deployed to canary.hostname)
@@ -48,5 +48,5 @@ certManager:
   clusterIssuer: "selfsigned-issuer"
 
 env:
-  ASPNETCORE_ENVIRONMENT: "Production"
+  ASPNETCORE_ENVIRONMENT: "Development"
   connectionString: "Host=bestrong-prod-postgresql;Port=5432;Database=bestrong_db;Username=bestrong_user;Password=StrongPassword123!;"
