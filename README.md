@@ -1,4 +1,4 @@
-# Git guide
+## Git guide
 
 ## Sync `main`
 
