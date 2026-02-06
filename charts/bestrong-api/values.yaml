@@ -32,7 +32,7 @@ postgresql:
   image:
     registry: acrbestrong01.azurecr.io
     repository: bitnami/postgresql
-    tag: 16.2.0
+    tag: "16"
   auth:
     username: bestrong_user
     password: "StrongPassword123!"
