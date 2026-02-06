@@ -26,7 +26,7 @@ canary:
   # Example: weight=20 means 20% to canary, 80% to prod
   weight: 10
   stableServiceName: "bestrong-prod"
-
+  stableReleaseName: "bestrong-prod"
 postgresql:
   enabled: true
   image:
