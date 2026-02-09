@@ -11,9 +11,9 @@ spec:
   routes:
 {{- if .Values.canary.enabled }}
     # === CANARY RELEASE ===
-    # Тут ми налаштовуємо окремий домен (canary.bestrong...) 
+    # Використовуємо окремий домен для canary (canary.host у values)
     # Він веде ПРЯМО на canary-сервіс, щоб тестувати його ізольовано.
-    - match: Host(`canary.{{ .Values.ingress.host }}`)
+    - match: Host(`{{ .Values.canary.host | default (printf "canary-%s" .Values.ingress.host) }}`)
       kind: Rule
       priority: 50
       services:
