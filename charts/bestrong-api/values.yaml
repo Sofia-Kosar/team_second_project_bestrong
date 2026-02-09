@@ -14,12 +14,16 @@ service:
 
 ingress:
   enabled: true
-  host: "20.87.244.28.nip.io"
+  host: "bestrongteam2.duckdns.org"
 
 canary:
-  # enabled: true = this is a canary release (deployed to canary.hostname)
+  # enabled: true = this is a canary release (deployed to canary.host)
   # enabled: false = this is a production release (deployed to main hostname)
   enabled: false
+  
+  # host: окремий домен для canary (якщо enabled=true)
+  # Приклад: "canary-bestrongteam2.duckdns.org"
+  host: ""
   
   # weight: percentage of traffic to send to canary (0-100)
   # When weight > 0, prod release creates TraefikService for weighted routing
@@ -45,7 +49,9 @@ postgresql:
 
 certManager:
   enabled: true
-  clusterIssuer: "selfsigned-issuer"
+  # Використовуйте "letsencrypt-staging" для тестування, 
+  # потім "letsencrypt-prod" для production
+  clusterIssuer: "letsencrypt-prod"
 
 env:
   ASPNETCORE_ENVIRONMENT: "Development"

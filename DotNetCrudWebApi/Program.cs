@@ -26,6 +26,18 @@ app.UseHttpsRedirection();
 
 app.UseAuthorization();
 
+// Root endpoint - redirect to Swagger
+app.MapGet("/", () => Results.Redirect("/swagger"))
+    .ExcludeFromDescription();
+
+// Health check endpoint with pod identification
+app.MapGet("/health", () => Results.Ok(new { 
+    status = "Healthy", 
+    timestamp = DateTime.UtcNow,
+    hostname = Environment.MachineName,
+    environment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Unknown"
+})).ExcludeFromDescription();
+
 app.MapControllers();
 
 using (var scope = app.Services.CreateScope())

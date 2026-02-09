@@ -8,7 +8,7 @@ metadata:
 spec:
   secretName: {{ .Release.Name }}-tls
   dnsNames:
-    - {{ if .Values.canary.enabled }}canary-{{ .Values.ingress.host }}{{ else }}{{ .Values.ingress.host }}{{ end }}
+    - {{ if .Values.canary.enabled }}{{ .Values.canary.host | default (printf "canary-%s" .Values.ingress.host) }}{{ else }}{{ .Values.ingress.host }}{{ end }}
   issuerRef:
     name: {{ .Values.certManager.clusterIssuer }}
     kind: ClusterIssuer

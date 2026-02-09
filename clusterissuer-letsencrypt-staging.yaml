@@ -1,0 +1,22 @@
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-staging
+spec:
+  acme:
+    # Staging ACME server для тестування (не має rate limits)
+    server: https://acme-staging-v02.api.letsencrypt.org/directory
+    
+    # Email для повідомлень про термін дії сертифіката
+    # ВАЖЛИВО: Замініть на ваш реальний email
+    email: kosarsofia0909@gmail.com
+    
+    # Секрет для зберігання ACME account private key
+    privateKeySecretRef:
+      name: letsencrypt-staging-account-key
+    
+    # HTTP-01 challenge через Traefik ingress
+    solvers:
+    - http01:
+        ingress:
+          class: traefik
