@@ -1,5 +1,4 @@
 {{- if and .Values.ingress.enabled (not .Values.canary.enabled) (gt (.Values.canary.weight | int) 0) -}}
-# Цей TraefikService створюється тільки для PROD релізу, коли canary.weight > 0
 apiVersion: traefik.io/v1alpha1
 kind: TraefikService
 metadata:
@@ -10,11 +9,9 @@ metadata:
 spec:
   weighted:
     services:
-      # Stable/Production сервіс (Release name: bestrong-prod)
       - name: bestrong-prod
         port: {{ .Values.service.port }}
         weight: {{ sub 100 (.Values.canary.weight | int) }}
-      # Canary сервіс (Release name: bestrong-canary)
       - name: bestrong-canary
         port: {{ .Values.service.port }}
         weight: {{ .Values.canary.weight | int }}

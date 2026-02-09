@@ -4,7 +4,6 @@ metadata:
   name: {{ .Release.Name }}
   labels:
     app: {{ .Release.Name }}
-    # Додаємо мітку версії для зручності моніторингу
     version: {{ if .Values.canary.enabled }}canary{{ else }}stable{{ end }}
 spec:
   type: ClusterIP
@@ -14,5 +13,4 @@ spec:
       protocol: TCP
       name: http
   selector:
-    # Це критично важливо: сервіс має чітко бачити тільки свої поди
     app: {{ .Release.Name }}
