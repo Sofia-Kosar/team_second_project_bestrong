@@ -22,30 +22,20 @@ jobs:
     defaults:
       run:
         working-directory: ${{ env.TF_WORKING_DIR }}
-    
     env:
       ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
       ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
       ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
       ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
-
     steps:
       - uses: actions/checkout@v3
-
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v2
         with:
           terraform_wrapper: false
-
-      - name: Terraform Init
-        run: terraform init
-
-      - name: Terraform Validate
-        run: terraform validate
-
-      - name: Terraform Plan
-        run: terraform plan -out=tfplan
-
+      - run: terraform init
+      - run: terraform validate
+      - run: terraform plan -out=tfplan
       - name: Terraform Apply
         if: github.ref == 'refs/heads/main'
         run: terraform apply -auto-approve tfplan
@@ -56,7 +46,6 @@ jobs:
     runs-on: self-hosted
     outputs:
       docker_tag: ${{ steps.calc_version.outputs.DOCKER_TAG }}
-
     steps:
     - uses: actions/checkout@v3
     
@@ -65,17 +54,20 @@ jobs:
       with:
         creds: ${{ secrets.AZURE_CREDENTIALS }}
     
-    - uses: azure/setup-helm@v3
+    # ВИПРАВЛЕНО: Додано токен та конкретну версію для Helm
+    - name: Setup Helm
+      uses: azure/setup-helm@v3
+      with:
+        version: v3.13.1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-    # 1. Calculate Version
     - name: Calculate Version
       id: calc_version
       run: |
         VERSION="${{ env.APP_VERSION }}.${{ github.run_number }}"
         echo "DOCKER_TAG=$VERSION" >> $GITHUB_OUTPUT
-        echo "Generated Version: $VERSION"
 
-    # 2. Build & Push Docker Image
     - name: Build and Push Docker
       run: |
         VERSION="${{ steps.calc_version.outputs.DOCKER_TAG }}"
@@ -83,24 +75,21 @@ jobs:
           --registry ${{ env.ACR_NAME }} \
           --file Dockerfile .
 
-    # 3. Build & Push Helm Chart
     - name: Package and Push Helm Chart
       run: |
         VERSION="${{ steps.calc_version.outputs.DOCKER_TAG }}"
         ACR_URL="${{ env.ACR_NAME }}.azurecr.io"
-        USER_NAME="00000000-0000-0000-0000-000000000000"
-        PASSWORD=$(az acr login --name ${{ env.ACR_NAME }} --expose-token --output tsv --query accessToken)
-        helm registry login $ACR_URL --username $USER_NAME --password $PASSWORD
+        # Використовуємо az acr login для простішої автентифікації
+        az acr login --name ${{ env.ACR_NAME }}
         helm package ./charts/${{ env.CHART_NAME }} --version $VERSION --app-version $VERSION
         helm push ${{ env.CHART_NAME }}-$VERSION.tgz oci://$ACR_URL/helm
 
   # === Deploy Canary ====
-  # Deploys a canary release to canary.hostname for testing
-  # This release receives direct traffic for validation
   deploy-canary:
     needs: build
     runs-on: self-hosted
     steps:
+    - uses: actions/checkout@v3 # Необхідно, щоб бачити контекст якщо треба
     - uses: azure/login@v1
       with:
         creds: ${{ secrets.AZURE_CREDENTIALS }}
@@ -108,21 +97,21 @@ jobs:
       with:
         resource-group: ${{ env.RESOURCE_GROUP }}
         cluster-name: ${{ env.AKS_CLUSTER }}
-    - uses: azure/setup-helm@v3
+    
+    # ВИПРАВЛЕНО: Setup Helm всюди
+    - name: Setup Helm
+      uses: azure/setup-helm@v3
+      with:
+        version: v3.13.1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Deploy Canary from ACR
       run: |
         VERSION="${{ needs.build.outputs.docker_tag }}"
         ACR_URL="${{ env.ACR_NAME }}.azurecr.io"
+        az acr login --name ${{ env.ACR_NAME }}
         
-        # We need to login to pull the chart
-        USER_NAME="00000000-0000-0000-0000-000000000000"
-        PASSWORD=$(az acr login --name ${{ env.ACR_NAME }} --expose-token --output tsv --query accessToken)
-        helm registry login $ACR_URL --username $USER_NAME --password $PASSWORD
-
-        echo "Deploying Canary Version: $VERSION"
-
-        # NOTE: Path is now oci://...
         helm upgrade --install bestrong-canary oci://$ACR_URL/helm/${{ env.CHART_NAME }} \
           --version $VERSION \
           --set image.repository=$ACR_URL/${{ env.IMAGE_NAME }} \
@@ -135,11 +124,6 @@ jobs:
           --namespace default
 
   # === Promote to Stable ===
-  # Updates prod release with canary.weight > 0
-  # This enables weighted traffic distribution via TraefikService:
-  # - 80% traffic → bestrong-prod (stable)
-  # - 20% traffic → bestrong-canary (new version)
-  # Both canary and prod continue running for gradual rollout
   promote-stable:
     needs: [deploy-canary, build]
     runs-on: self-hosted
@@ -151,21 +135,20 @@ jobs:
       with:
         resource-group: ${{ env.RESOURCE_GROUP }}
         cluster-name: ${{ env.AKS_CLUSTER }}
-    - uses: azure/setup-helm@v3
+    
+    - name: Setup Helm
+      uses: azure/setup-helm@v3
+      with:
+        version: v3.13.1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Deploy Stable with Weighted Routing
       run: |
         VERSION="${{ needs.build.outputs.docker_tag }}"
         ACR_URL="${{ env.ACR_NAME }}.azurecr.io"
-        
-        # Login to pull chart
-        USER_NAME="00000000-0000-0000-0000-000000000000"
-        PASSWORD=$(az acr login --name ${{ env.ACR_NAME }} --expose-token --output tsv --query accessToken)
-        helm registry login $ACR_URL --username $USER_NAME --password $PASSWORD
+        az acr login --name ${{ env.ACR_NAME }}
 
-        echo "Promoting Stable Version: $VERSION with Canary Weight: 20"
-
-        # Deploy prod with canary.weight > 0 to enable weighted traffic distribution
         helm upgrade --install bestrong-prod oci://$ACR_URL/helm/${{ env.CHART_NAME }} \
           --version $VERSION \
           --set image.repository=$ACR_URL/${{ env.IMAGE_NAME }} \
@@ -176,20 +159,11 @@ jobs:
           --set env.aspnetEnvironment="Production" \
           --namespace default
 
-    - name: Wait for Monitoring
-      run: |
-        echo "Canary is receiving 20% of traffic. Monitor metrics before full rollout..."
-        echo "To complete rollout: set canary.weight=0 and cleanup canary deployment"
-        # Optional: sleep 300  # Wait 5 minutes for monitoring
-
   # === Complete Rollout ===
-  # Final step: moves 100% traffic to stable and removes canary
-  # This step should be triggered manually via workflow_dispatch
-  # after monitoring canary performance with weighted traffic
   complete-rollout:
     needs: [promote-stable, build]
     runs-on: self-hosted
-    if: github.event_name == 'workflow_dispatch'  # Only run manually
+    if: github.event_name == 'workflow_dispatch'
     steps:
     - uses: azure/login@v1
       with:
@@ -198,21 +172,20 @@ jobs:
       with:
         resource-group: ${{ env.RESOURCE_GROUP }}
         cluster-name: ${{ env.AKS_CLUSTER }}
-    - uses: azure/setup-helm@v3
+    
+    - name: Setup Helm
+      uses: azure/setup-helm@v3
+      with:
+        version: v3.13.1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Full Rollout - 100% Traffic to Stable
       run: |
         VERSION="${{ needs.build.outputs.docker_tag }}"
         ACR_URL="${{ env.ACR_NAME }}.azurecr.io"
-        
-        # Login to pull chart
-        USER_NAME="00000000-0000-0000-0000-000000000000"
-        PASSWORD=$(az acr login --name ${{ env.ACR_NAME }} --expose-token --output tsv --query accessToken)
-        helm registry login $ACR_URL --username $USER_NAME --password $PASSWORD
+        az acr login --name ${{ env.ACR_NAME }}
 
-        echo "Complete Rollout: 100% traffic to stable version $VERSION"
-
-        # Update prod with canary.weight=0 to disable weighted routing
         helm upgrade --install bestrong-prod oci://$ACR_URL/helm/${{ env.CHART_NAME }} \
           --version $VERSION \
           --set image.repository=$ACR_URL/${{ env.IMAGE_NAME }} \
@@ -222,6 +195,3 @@ jobs:
           --set env.connectionString="${{ secrets.DB_CONNECTION_STRING }}" \
           --set env.aspnetEnvironment="Production" \
           --namespace default
-
-    # - name: Cleanup Canary
-    #   run: helm uninstall bestrong-canary --namespace default || true
