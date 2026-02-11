@@ -1,0 +1,225 @@
+# Prometheus Stack Configuration for BeStrong Monitoring
+
+# Grafana Configuration
+grafana:
+  enabled: true
+  adminPassword: "Admin123!"  
+  
+  # Ingress для доступу до Grafana UI
+  ingress:
+    enabled: true
+    ingressClassName: traefik
+    annotations:
+      cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    hosts:
+      - grafana.bestrongteam2.duckdns.org
+    tls:
+      - secretName: grafana-tls
+        hosts:
+          - grafana.bestrongteam2.duckdns.org
+  
+  # Persistence для збереження дашбордів
+  persistence:
+    enabled: true
+    size: 5Gi
+  
+  # Автоматичне імпортування дашбордів
+  dashboardProviders:
+    dashboardproviders.yaml:
+      apiVersion: 1
+      providers:
+      - name: 'default'
+        orgId: 1
+        folder: ''
+        type: file
+        disableDeletion: false
+        editable: true
+        options:
+          path: /var/lib/grafana/dashboards/default
+  
+  # Kubernetes моніторинг дашборди
+  dashboards:
+    default:
+      kubernetes-cluster:
+        gnetId: 7249
+        revision: 1
+        datasource: Prometheus
+      kubernetes-pods:
+        gnetId: 6417
+        revision: 1
+        datasource: Prometheus
+      kubernetes-views-global:
+        gnetId: 15760
+        revision: 1
+        datasource: Prometheus
+      kubernetes-pod-resources:
+        gnetId: 13770
+        revision: 1
+        datasource: Prometheus
+      prometheus-stats:
+        gnetId: 3662
+        revision: 1
+        datasource: Prometheus
+
+# Prometheus Configuration
+prometheus:
+  enabled: true
+  
+  # Ingress для Prometheus UI (опціонально)
+  ingress:
+    enabled: true
+    ingressClassName: traefik
+    annotations:
+      cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    hosts:
+      - prometheus.bestrongteam2.duckdns.org
+    tls:
+      - secretName: prometheus-tls
+        hosts:
+          - prometheus.bestrongteam2.duckdns.org
+  
+  prometheusSpec:
+    # Retention period
+    retention: 15d
+    
+    # Storage
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 20Gi
+    
+    # Service Monitor для моніторингу BeStrong API
+    # Prometheus буде збирати метрики з усіх ServiceMonitors з label release=prometheus
+    serviceMonitorSelector:
+      matchLabels:
+        release: prometheus
+    serviceMonitorNamespaceSelector: {}
+    
+    podMonitorSelector:
+      matchLabels:
+        release: prometheus
+    podMonitorNamespaceSelector: {}
+    
+    # Додаткові правила алертів
+    additionalAlertRelabelConfigs: []
+
+# Alertmanager Configuration
+alertmanager:
+  enabled: true
+  
+  config:
+    global:
+      resolve_timeout: 5m
+    
+    route:
+      group_by: ['alertname', 'cluster', 'service']
+      group_wait: 10s
+      group_interval: 10s
+      repeat_interval: 12h
+      receiver: 'default'
+      routes:
+      - match:
+          alertname: BestrongHighCPU
+        receiver: 'default'
+      - match:
+          alertname: BestrongHighMemory
+        receiver: 'default'
+    
+    receivers:
+    - name: 'default'
+      # Тут можна додати webhook, email, Slack тощо за потреби
+      # Приклад для Slack:
+      # slack_configs:
+      # - api_url: 'YOUR_SLACK_WEBHOOK_URL'
+      #   channel: '#alerts'
+
+# Правила алертів для BeStrong API
+serverFiles:
+  alerting_rules.yml:
+    groups:
+    - name: bestrong-alerts
+      interval: 30s
+      rules:
+      
+      # Alert для високого використання CPU
+      - alert: BestrongHighCPU
+        expr: |
+          (
+            sum(rate(container_cpu_usage_seconds_total{namespace="default", pod=~"bestrong-.*"}[5m])) 
+            / 
+            sum(container_spec_cpu_quota{namespace="default", pod=~"bestrong-.*"} / container_spec_cpu_period{namespace="default", pod=~"bestrong-.*"})
+          ) * 100 > 70
+        for: 2m
+        labels:
+          severity: warning
+          service: bestrong-api
+        annotations:
+          summary: "BeStrong API високе використання CPU"
+          description: "Pod {{ $labels.pod }} використовує {{ $value | humanize }}% CPU (поріг: 70%)"
+      
+      # Alert для високого використання Memory
+      - alert: BestrongHighMemory
+        expr: |
+          (
+            sum(container_memory_working_set_bytes{namespace="default", pod=~"bestrong-.*"}) 
+            / 
+            sum(container_spec_memory_limit_bytes{namespace="default", pod=~"bestrong-.*"})
+          ) * 100 > 70
+        for: 2m
+        labels:
+          severity: warning
+          service: bestrong-api
+        annotations:
+          summary: "BeStrong API високе використання пам'яті"
+          description: "Pod {{ $labels.pod }} використовує {{ $value | humanize }}% пам'яті (поріг: 70%)"
+      
+      # Alert для недоступності BeStrong API
+      - alert: BestrongAPIDown
+        expr: up{job=~".*bestrong.*"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: bestrong-api
+        annotations:
+          summary: "BeStrong API недоступний"
+          description: "BeStrong API pod {{ $labels.pod }} недоступний більше 1 хвилини"
+      
+      # Alert для високої кількості помилок HTTP
+      - alert: BestrongHighErrorRate
+        expr: |
+          (
+            sum(rate(http_requests_total{job=~".*bestrong.*", status=~"5.."}[5m])) 
+            / 
+            sum(rate(http_requests_total{job=~".*bestrong.*"}[5m]))
+          ) * 100 > 5
+        for: 5m
+        labels:
+          severity: warning
+          service: bestrong-api
+        annotations:
+          summary: "Висока частота помилок BeStrong API"
+          description: "{{ $value | humanize }}% запитів повертають 5xx помилки"
+
+# Node Exporter для метрик nodes
+prometheus-node-exporter:
+  enabled: true
+
+# Kube State Metrics для метрик K8s об'єктів
+kube-state-metrics:
+  enabled: true
+
+# Налаштування для ServiceMonitor
+kubeControllerManager:
+  enabled: true
+
+kubeScheduler:
+  enabled: true
+
+kubeProxy:
+  enabled: true
+
+kubelet:
+  enabled: true

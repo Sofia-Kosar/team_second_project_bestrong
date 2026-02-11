@@ -53,6 +53,11 @@ certManager:
   # потім "letsencrypt-prod" для production
   clusterIssuer: "letsencrypt-prod"
 
+monitoring:
+  enabled: true
+  # Prometheus алерти будуть створені в namespace monitoring
+  # Алерти спрацьовують при CPU > 70% та Memory > 70%
+
 env:
   ASPNETCORE_ENVIRONMENT: "Development"
   connectionString: "Host=bestrong-prod-postgresql;Port=5432;Database=bestrong_db;Username=bestrong_user;Password=StrongPassword123!;"
