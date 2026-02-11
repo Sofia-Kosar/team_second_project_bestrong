@@ -1,0 +1,28 @@
+{{- if .Values.monitoring.enabled -}}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ .Release.Name }}-metrics
+  namespace: monitoring
+  labels:
+    app: {{ .Release.Name }}
+    release: prometheus
+spec:
+  # ServiceMonitor буде шукати Service в namespace default
+  namespaceSelector:
+    matchNames:
+      - default
+  
+  # Selector для Service
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}
+  
+  # Endpoints для scraping
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s
+      scheme: http
+{{- end }}

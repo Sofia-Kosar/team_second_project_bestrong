@@ -1,0 +1,71 @@
+{{- if .Values.monitoring.enabled -}}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ .Release.Name }}-alerts
+  namespace: monitoring
+  labels:
+    app: {{ .Release.Name }}
+    release: prometheus
+spec:
+  groups:
+  - name: bestrong-alerts
+    interval: 30s
+    rules:
+    
+    # Alert для високого використання CPU (> 70%)
+    - alert: BestrongHighCPU
+      expr: |
+        (
+          sum(rate(container_cpu_usage_seconds_total{namespace="default", pod=~"bestrong-.*"}[5m])) by (pod)
+          / 
+          sum(container_spec_cpu_quota{namespace="default", pod=~"bestrong-.*"} / container_spec_cpu_period{namespace="default", pod=~"bestrong-.*"}) by (pod)
+        ) * 100 > 70
+      for: 2m
+      labels:
+        severity: warning
+        service: bestrong-api
+      annotations:
+        summary: "BeStrong API високе використання CPU"
+        description: "Pod {{`{{ $labels.pod }}`}} використовує {{`{{ $value | printf \"%.2f\" }}`}}% CPU (поріг: 70%)"
+    
+    # Alert для високого використання Memory (> 70%)
+    - alert: BestrongHighMemory
+      expr: |
+        (
+          sum(container_memory_working_set_bytes{namespace="default", pod=~"bestrong-.*", container!=""}) by (pod)
+          / 
+          sum(container_spec_memory_limit_bytes{namespace="default", pod=~"bestrong-.*", container!=""}) by (pod)
+        ) * 100 > 70
+      for: 2m
+      labels:
+        severity: warning
+        service: bestrong-api
+      annotations:
+        summary: "BeStrong API високе використання пам'яті"
+        description: "Pod {{`{{ $labels.pod }}`}} використовує {{`{{ $value | printf \"%.2f\" }}`}}% пам'яті (поріг: 70%)"
+    
+    # Alert для недоступності BeStrong API
+    - alert: BestrongPodDown
+      expr: |
+        kube_pod_status_phase{namespace="default", pod=~"bestrong-.*", phase="Running"} == 0
+      for: 1m
+      labels:
+        severity: critical
+        service: bestrong-api
+      annotations:
+        summary: "BeStrong API pod не запущений"
+        description: "Pod {{`{{ $labels.pod }}`}} не в статусі Running більше 1 хвилини"
+    
+    # Alert для рестартів pods
+    - alert: BestrongPodRestarting
+      expr: |
+        rate(kube_pod_container_status_restarts_total{namespace="default", pod=~"bestrong-.*"}[15m]) > 0
+      for: 5m
+      labels:
+        severity: warning
+        service: bestrong-api
+      annotations:
+        summary: "BeStrong API pod перезапускається"
+        description: "Pod {{`{{ $labels.pod }}`}} перезапускався {{`{{ $value }}`}} разів за останні 15 хвилин"
+{{- end }}

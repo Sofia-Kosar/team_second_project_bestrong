@@ -1,5 +1,6 @@
 using DotNetCrudWebApi.Data;
 using Microsoft.EntityFrameworkCore;
+using Prometheus;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -22,6 +23,9 @@ var app = builder.Build();
 app.UseSwagger();
 app.UseSwaggerUI();
 
+// Prometheus metrics middleware
+app.UseHttpMetrics();
+
 app.UseHttpsRedirection();
 
 app.UseAuthorization();
@@ -39,6 +43,9 @@ app.MapGet("/health", () => Results.Ok(new {
 })).ExcludeFromDescription();
 
 app.MapControllers();
+
+// Prometheus metrics endpoint
+app.MapMetrics();
 
 using (var scope = app.Services.CreateScope())
 {
