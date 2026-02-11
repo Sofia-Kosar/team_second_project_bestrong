@@ -173,12 +173,6 @@ jobs:
         resource-group: ${{ env.RESOURCE_GROUP }}
         cluster-name: ${{ env.AKS_CLUSTER }}
     
-    - name: Setup Helm
-      uses: azure/setup-helm@v3
-      with:
-        version: v3.13.1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Full Rollout - 100% Traffic to Stable
       run: |
