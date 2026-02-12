@@ -40,6 +40,36 @@ jobs:
         if: github.ref == 'refs/heads/main'
         run: terraform apply -auto-approve tfplan
 
+  jobs:
+  deploy-monitoring:
+    needs: infrastructure
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - uses: azure/aks-set-context@v3
+        with:
+          resource-group: ${{ env.RESOURCE_GROUP }}
+          cluster-name: ${{ env.AKS_CLUSTER }}
+
+      - name: Deploy Kubecost via Helm
+        run: |
+          helm repo add kubecost https://kubecost.github.io/cost-analyzer/
+          helm repo update
+          helm upgrade --install kubecost kubecost/cost-analyzer \
+            --namespace kubecost \
+            --create-namespace \
+            -f charts/kubecost-values.yaml
+
+      - name: Deploy Kubecost Ingress
+        run: |
+          kubectl apply -f charts/kubecost-final.yaml
+
   # === Build Docker & Helm ===
   build:
     needs: infrastructure 
