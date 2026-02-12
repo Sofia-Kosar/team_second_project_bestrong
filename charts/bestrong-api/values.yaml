@@ -61,3 +61,12 @@ monitoring:
 env:
   ASPNETCORE_ENVIRONMENT: "Development"
   connectionString: "Host=bestrong-prod-postgresql;Port=5432;Database=bestrong_db;Username=bestrong_user;Password=StrongPassword123!;"
+
+kubecostProductConfigs:
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "1Gi"
+    limits:
+      cpu: "1500m"
+      memory: "4Gi"  
