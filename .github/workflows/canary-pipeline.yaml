@@ -101,6 +101,7 @@ jobs:
           helm upgrade --install kubecost kubecost/cost-analyzer \
             --namespace kubecost \
             --create-namespace \
+            --set global.clusterId="aks-bestrong-demo" \
             --set kubecostProductConfigs.resources.requests.memory="1Gi" \
             --set kubecostProductConfigs.resources.limits.memory="4Gi" \
             --set kubecostProductConfigs.resources.requests.cpu="500m" \
