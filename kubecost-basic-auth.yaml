@@ -1,0 +1,26 @@
+---
+# Secret з credentials для Basic Auth
+# Username: admin
+# Password: KubeCost123!
+apiVersion: v1
+kind: Secret
+metadata:
+  name: kubecost-basic-auth
+  namespace: kubecost
+type: Opaque
+data:
+  # admin:KubeCost123! (htpasswd format з Apache MD5)
+  # Згенеровано: openssl passwd -apr1 KubeCost123!
+  users: YWRtaW46JGFwcjEkdFA3TmIudzckeThReVRlOFc4clFyejdyall1c3JSLwo=
+
+---
+# Traefik Middleware для Basic Authentication
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: basic-auth
+  namespace: kubecost
+spec:
+  basicAuth:
+    secret: kubecost-basic-auth
+    removeHeader: true
