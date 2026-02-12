@@ -1,7 +1,7 @@
 apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
-  name: {{ .Release.Name }}-kubecost-secure
+  name: kubecost-secure-route
   namespace: kubecost
 spec:
   entryPoints:
@@ -10,8 +10,7 @@ spec:
   - match: Host(`kubecost-bestrongteam2.duckdns.org`)
     kind: Rule
     services:
-    - name: kubecost-cost-analyzer          
-      
+    - name: kubecost-cost-analyzer 
       port: 9090
   tls:
-    secretName: {{ .Release.Name }}-kubecost-tls-duckdns
+    secretName: bestrong-prod-kubecost-tls-duckdns
