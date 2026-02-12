@@ -78,44 +78,6 @@ jobs:
         helm package ./charts/${{ env.CHART_NAME }} --version $VERSION --app-version $VERSION
         helm push ${{ env.CHART_NAME }}-$VERSION.tgz oci://$ACR_URL/helm
 
-  setup-kubecost:
-    needs: infrastructure
-    runs-on: self-hosted
-    steps:
-      - uses: actions/checkout@v3
-
-      - name: Azure Login
-        uses: azure/login@v1
-        with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
-
-      - uses: azure/aks-set-context@v3
-        with:
-          resource-group: ${{ env.RESOURCE_GROUP }}
-          cluster-name: ${{ env.AKS_CLUSTER }}
-
-      - name: Install and Configure Kubecost
-        run: |
-          helm repo add kubecost https://kubecost.github.io/cost-analyzer/
-          helm repo update
-
-          # Встановлюємо стабільну 3.0.0+, щоб уникнути багів версії 2.9
-          helm upgrade --install kubecost kubecost/cost-analyzer \
-            --namespace kubecost \
-            --create-namespace \
-            --version 3.0.0 \
-            --set global.clusterId="bestrong-aks-cluster" \
-            --set kubecostProductConfigs.resources.requests.memory="1Gi" \
-            --set kubecostProductConfigs.resources.limits.memory="4Gi" \
-            --set kubecostProductConfigs.resources.requests.cpu="500m" \
-            --set kubecostProductConfigs.resources.limits.cpu="1500m"
-            
-      - name: Apply Kubecost IngressRoute
-        run: |
-          # Застосовуємо твій файл IngressRoute
-          # ПЕРЕКОНАЙСЯ, що в kubecost-final.yaml ти прибрав {{ .Release.Name }}
-          kubectl apply -f charts/kubecost-final.yaml
-
   # === Deploy Canary ====
   deploy-canary:
     needs: build
