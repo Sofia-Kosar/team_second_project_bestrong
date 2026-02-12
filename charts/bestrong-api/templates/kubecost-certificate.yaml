@@ -8,5 +8,5 @@ spec:
   dnsNames:
     - kubecost-bestrongteam2.duckdns.org
   issuerRef:
-    name: letsencrypt-prod
+    name: selfsigned-issuer 
     kind: ClusterIssuer

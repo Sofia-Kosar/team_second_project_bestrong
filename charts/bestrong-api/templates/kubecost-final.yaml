@@ -1,0 +1,25 @@
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: kubecost-auth
+  namespace: kubecost
+spec:
+  basicAuth:
+    secret: kubecost-auth
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: kubecost-secure
+  namespace: kubecost
+spec:
+  entryPoints:
+    - websecure
+  routes:
+  - match: Host(`kubecost-bestrongteam2.duckdns.org`)
+    kind: Rule
+    services:
+    - name: kubecost-cost-analyzer
+      port: 9090
+  tls:
+    secretName: kubecost-tls-duckdns
