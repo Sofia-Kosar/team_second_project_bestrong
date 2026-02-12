@@ -108,6 +108,7 @@ jobs:
           --set canary.weight=20 \
           --set env.connectionString="${{ secrets.DB_CONNECTION_STRING }}" \
           --set env.aspnetEnvironment="Production" \
+          --set kubecost.enabled=false # experimental
           --namespace default
 
   # === Promote to Stable ===
