@@ -1,0 +1,8 @@
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: kubecost-auth
+  namespace: kubecost
+spec:
+  basicAuth:
+    secret: kubecost-auth
