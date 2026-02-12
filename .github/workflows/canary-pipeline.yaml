@@ -99,17 +99,17 @@ jobs:
           helm repo add kubecost https://kubecost.github.io/cost-analyzer/
           helm repo update
 
+          # Встановлюємо стабільну 3.0.0+, щоб уникнути багів версії 2.9
           helm upgrade --install kubecost kubecost/cost-analyzer \
             --namespace kubecost \
             --create-namespace \
+            --version 3.0.0 \
             --set global.clusterId="bestrong-aks-cluster" \
-            --set prometheus.server.global.external_labels.cluster_id="bestrong-aks-cluster" \
-            --set fed.enabled=false \
             --set kubecostProductConfigs.resources.requests.memory="1Gi" \
             --set kubecostProductConfigs.resources.limits.memory="4Gi" \
             --set kubecostProductConfigs.resources.requests.cpu="500m" \
             --set kubecostProductConfigs.resources.limits.cpu="1500m"
-
+            
       - name: Apply Kubecost IngressRoute
         run: |
           # Застосовуємо твій файл IngressRoute
