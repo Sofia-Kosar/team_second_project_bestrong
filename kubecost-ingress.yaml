@@ -1,0 +1,27 @@
+---
+# Ingress для KubeCost Dashboard
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: kubecost-ingress
+  namespace: kubecost
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    traefik.ingress.kubernetes.io/router.middlewares: "kubecost-basic-auth@kubernetescrd"
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - kubecost.bestrongteam2.duckdns.org
+      secretName: kubecost-tls-duckdns  # Використовуємо існуючий certificate
+  rules:
+    - host: kubecost.bestrongteam2.duckdns.org
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: kubecost-cost-analyzer
+                port:
+                  number: 9090

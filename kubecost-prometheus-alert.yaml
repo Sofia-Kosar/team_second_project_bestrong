@@ -1,0 +1,96 @@
+---
+# PrometheusRule для моніторингу витрат через KubeCost
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: kubecost-budget-alerts
+  namespace: monitoring
+  labels:
+    release: prometheus
+    app: kube-prometheus-stack
+spec:
+  groups:
+  - name: kubecost-finops-alerts
+    interval: 1h
+    rules:
+    
+    # Alert 1: Дейлі витрати перевищили $20
+    - alert: KubeCostDailyBudgetExceeded
+      expr: |
+        sum(
+          increase(kubecost_cluster_management_cost[24h]) +
+          increase(kubecost_cluster_compute_cost[24h]) +
+          increase(kubecost_cluster_memory_cost[24h]) +
+          increase(kubecost_cluster_storage_cost[24h])
+        ) > 20
+      for: 30m
+      labels:
+        severity: warning
+        team: finops
+        service: kubecost
+      annotations:
+        summary: "Денні витрати кластера перевищили $20"
+        description: "Загальна вартість кластера за останні 24 години: ${{`{{ $value | printf \"%.2f\" }}`}}"
+        dashboard: "https://kubecost.bestrongteam2.duckdns.org"
+    
+    # Alert 2: Витрати зростають швидко (trend)
+    - alert: KubeCostRapidCostIncrease
+      expr: |
+        (
+          sum(rate(kubecost_cluster_management_cost[1h])) * 24 +
+          sum(rate(kubecost_cluster_compute_cost[1h])) * 24 +
+          sum(rate(kubecost_cluster_memory_cost[1h])) * 24 +
+          sum(rate(kubecost_cluster_storage_cost[1h])) * 24
+        ) > 25
+      for: 2h
+      labels:
+        severity: warning
+        team: finops
+      annotations:
+        summary: "Швидке зростання витрат (projected > $25/day)"
+        description: "Поточний trend вказує на витрати ${{`{{ $value | printf \"%.2f\" }}`}}/day"
+    
+    # Alert 3: Високі витрати на конкретний namespace
+    - alert: KubeCostHighNamespaceCost
+      expr: |
+        sum by (namespace) (
+          increase(kubecost_namespace_cpu_cost[24h]) +
+          increase(kubecost_namespace_memory_cost[24h]) +
+          increase(kubecost_namespace_storage_cost[24h])
+        ) > 10
+      for: 1h
+      labels:
+        severity: info
+        team: finops
+      annotations:
+        summary: "Високі витрати в namespace {{`{{ $labels.namespace }}`}}"
+        description: "Namespace {{`{{ $labels.namespace }}`}} коштує ${{`{{ $value | printf \"%.2f\" }}`}}/day"
+    
+    # Alert 4: KubeCost не працює (no metrics)
+    - alert: KubeCostMetricsUnavailable
+      expr: |
+        absent(kubecost_cluster_management_cost)
+      for: 10m
+      labels:
+        severity: critical
+        team: platform
+      annotations:
+        summary: "KubeCost metrics недоступні"
+        description: "Не можемо отримати метрики витрат з KubeCost. Перевірте pods в namespace kubecost."
+    
+    # Alert 5: Місячні витрати (проекція)
+    - alert: KubeCostMonthlyBudgetProjection
+      expr: |
+        (
+          sum(rate(kubecost_cluster_management_cost[7d])) * 86400 * 30 +
+          sum(rate(kubecost_cluster_compute_cost[7d])) * 86400 * 30 +
+          sum(rate(kubecost_cluster_memory_cost[7d])) * 86400 * 30 +
+          sum(rate(kubecost_cluster_storage_cost[7d])) * 86400 * 30
+        ) > 600
+      for: 4h
+      labels:
+        severity: info
+        team: finops
+      annotations:
+        summary: "Проекція місячних витрат > $600"
+        description: "На основі витрат останніх 7 днів, місячні витрати будуть: ${{`{{ $value | printf \"%.2f\" }}`}}"

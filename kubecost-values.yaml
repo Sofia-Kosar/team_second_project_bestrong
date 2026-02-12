@@ -1,0 +1,129 @@
+# KubeCost Configuration for BeStrong AKS Cluster
+
+# Global settings
+global:
+  # Cluster identification
+  clusterId: "aks-bestrong-demo"
+  clusterName: "aks-bestrong-demo"
+  
+  # Використовуємо існуючий Prometheus
+  prometheus:
+    enabled: false
+    fqdn: http://prometheus-kube-prometheus-prometheus.monitoring.svc.cluster.local:9090
+
+# KubeCost Frontend
+kubecostFrontend:
+  image: gcr.io/kubecost1/frontend
+
+# KubeCost Cost Analyzer
+kubecostModel:
+  image: gcr.io/kubecost1/cost-model
+  
+  # Інтеграція з Prometheus
+  promClusterIDLabel: cluster
+  
+  # Warmup для швидшого запуску
+  warmCache: true
+  warmSavingsCache: true
+  
+  # ETL для обробки даних
+  etl: true
+  etlCloudAsset: true
+
+# Ingress Configuration
+ingress:
+  enabled: true
+  className: traefik
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    # Basic Authentication
+    traefik.ingress.kubernetes.io/router.middlewares: "kubecost-basic-auth@kubernetescrd"
+  hosts:
+    - host: kubecost.bestrongteam2.duckdns.org
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: kubecost-tls
+      hosts:
+        - kubecost.bestrongteam2.duckdns.org
+
+# Service configuration
+service:
+  type: ClusterIP
+  port: 9090
+  targetPort: 9090
+
+# Persistence for cost data
+persistentVolume:
+  enabled: true
+  size: 10Gi
+  storageClass: default
+
+# Network costs (для Azure)
+networkCosts:
+  enabled: true
+  podMonitor:
+    enabled: true
+
+# Grafana integration (використовуємо існуючу Grafana)
+grafana:
+  enabled: false
+  # Використовуємо нашу Grafana
+  # Можна додати KubeCost dashboards вручну
+
+# Prometheus integration
+prometheus:
+  server:
+    global:
+      external_labels:
+        cluster_id: aks-bestrong-demo
+
+# Alerts configuration
+alertConfigs:
+  enabled: true
+  frontendUrl: https://kubecost.bestrongteam2.duckdns.org
+  
+  # Email alert для daily spend > $20
+  alerts:
+    - type: budget
+      threshold: 20  # USD per day
+      window: 1d
+      aggregation: cluster
+      filter: ""
+      ownerContact:
+        - kosarsofia0909@gmail.com
+
+# Resources
+resources:
+  requests:
+    cpu: 200m
+    memory: 256Mi
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+
+# Service Account
+serviceAccount:
+  create: true
+  name: kubecost
+
+# RBAC
+rbac:
+  create: true
+
+# Reporting configuration
+reporting:
+  productAnalytics: false  # Вимкнути відправку даних в Kubecost cloud
+
+# Azure specific settings
+cloudIntegrationSecret: ""  # Можна додати для більш точних даних
+
+# Priority class
+priorityClassName: ""
+
+# Node selector
+nodeSelector: {}
+
+# Tolerations
+tolerations: []
