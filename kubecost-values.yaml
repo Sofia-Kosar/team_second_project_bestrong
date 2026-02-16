@@ -6,7 +6,6 @@ global:
   clusterId: "aks-bestrong-demo"
   clusterName: "aks-bestrong-demo"
   
-  # Використовуємо існуючий Prometheus
   prometheus:
     enabled: false
     fqdn: http://prometheus-kube-prometheus-prometheus.monitoring.svc.cluster.local:9090
@@ -19,14 +18,12 @@ kubecostFrontend:
 kubecostModel:
   image: gcr.io/kubecost1/cost-model
   
-  # Інтеграція з Prometheus
+
   promClusterIDLabel: cluster
   
-  # Warmup для швидшого запуску
   warmCache: true
   warmSavingsCache: true
   
-  # ETL для обробки даних
   etl: true
   etlCloudAsset: true
 
@@ -60,17 +57,15 @@ persistentVolume:
   size: 10Gi
   storageClass: default
 
-# Network costs (для Azure)
+# Network costs
 networkCosts:
   enabled: true
   podMonitor:
     enabled: true
 
-# Grafana integration (використовуємо існуючу Grafana)
+# Grafana integration
 grafana:
   enabled: false
-  # Використовуємо нашу Grafana
-  # Можна додати KubeCost dashboards вручну
 
 # Prometheus integration
 prometheus:
@@ -84,7 +79,7 @@ alertConfigs:
   enabled: true
   frontendUrl: https://kubecost.bestrongteam2.duckdns.org
   
-  # Email alert для daily spend > $20
+  #alert daily spend > $20
   alerts:
     - type: budget
       threshold: 20  # USD per day
@@ -114,10 +109,10 @@ rbac:
 
 # Reporting configuration
 reporting:
-  productAnalytics: false  # Вимкнути відправку даних в Kubecost cloud
+  productAnalytics: false  
 
 # Azure specific settings
-cloudIntegrationSecret: ""  # Можна додати для більш точних даних
+cloudIntegrationSecret: ""  
 
 # Priority class
 priorityClassName: ""
