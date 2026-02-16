@@ -73,7 +73,6 @@ jobs:
       run: |
         VERSION="${{ steps.calc_version.outputs.DOCKER_TAG }}"
         ACR_URL="${{ env.ACR_NAME }}.azurecr.io"
-        # Використовуємо az acr login для простішої автентифікації
         az acr login --name ${{ env.ACR_NAME }}
         helm package ./charts/${{ env.CHART_NAME }} --version $VERSION --app-version $VERSION
         helm push ${{ env.CHART_NAME }}-$VERSION.tgz oci://$ACR_URL/helm
