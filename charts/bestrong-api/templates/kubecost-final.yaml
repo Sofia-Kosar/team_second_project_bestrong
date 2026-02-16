@@ -1,7 +1,7 @@
 apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
-  name: kubecost-secure-route
+  name: {{ .Release.Name }}-kubecost-secure-route
   namespace: kubecost
 spec:
   entryPoints:
