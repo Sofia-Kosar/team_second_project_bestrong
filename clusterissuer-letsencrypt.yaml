@@ -8,7 +8,7 @@ spec:
     server: https://acme-v02.api.letsencrypt.org/directory
     
     # Email для повідомлень про термін дії сертифіката
-    # ВАЖЛИВО: Замініть на ваш реальний email
+   
     email: kosarsofia0909@gmail.com
     
     # Секрет для зберігання ACME account private key
