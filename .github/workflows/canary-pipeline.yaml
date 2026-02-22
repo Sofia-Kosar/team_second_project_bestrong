@@ -2,7 +2,7 @@ name: Canary Deployment with Terraform
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, opt/fix, ops/certificate ]
   workflow_dispatch:
 
 env:
