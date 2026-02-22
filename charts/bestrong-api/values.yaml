@@ -49,14 +49,11 @@ postgresql:
 
 certManager:
   enabled: true
-  # Використовуйте "letsencrypt-staging" для тестування, 
-  # потім "letsencrypt-prod" для production
   clusterIssuer: "letsencrypt-prod"
 
 monitoring:
   enabled: true
-  # Prometheus алерти будуть створені в namespace monitoring
-  # Алерти спрацьовують при CPU > 70% та Memory > 70%
+  
 
 env:
   ASPNETCORE_ENVIRONMENT: "Development"
