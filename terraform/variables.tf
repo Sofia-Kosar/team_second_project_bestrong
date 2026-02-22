@@ -7,13 +7,13 @@ variable "resource_group_name" {
 variable "location" {
   description = "Azure region to deploy resources"
   type        = string
-  default     = "southafricanorth"
+  default     = "francecentral"
 }
 
 variable "acr_name_prefix" {
   description = "Prefix for the Azure Container Registry name (must be unique globally)"
   type        = string
-  default     = "acrbestrong01"
+  default     = "acrbestrongstu"
 }
 
 variable "aks_cluster_name" {
@@ -37,5 +37,5 @@ variable "node_count" {
 variable "vm_size" {
   description = "The size of the Virtual Machine for the nodes"
   type        = string
-  default     = "Standard_D2_v2"
+  default     = "Standard_B2as_v2"
 }
