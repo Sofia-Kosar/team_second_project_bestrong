@@ -31,12 +31,13 @@ jobs:
           echo "ARM_CLIENT_SECRET=$(echo '${{ secrets.ARM_CLIENT_SECRET }}' | tr -d '\n\r')" >> $GITHUB_ENV
           echo "ARM_SUBSCRIPTION_ID=$(echo '${{ secrets.ARM_SUBSCRIPTION_ID }}' | tr -d '[:space:]')" >> $GITHUB_ENV
           echo "ARM_TENANT_ID=$(echo '${{ secrets.ARM_TENANT_ID }}' | tr -d '[:space:]')" >> $GITHUB_ENV
+          echo "ARM_ACCESS_KEY=${{ secrets.ARM_ACCESS_KEY }}" >> $GITHUB_ENV
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v2
         with:
           terraform_wrapper: false
-      - run: terraform init
+      - run: terraform init -backend-config="access_key=${{ secrets.ARM_ACCESS_KEY }}"
       - run: terraform validate
       - run: terraform plan -out=tfplan
       - name: Terraform Apply
