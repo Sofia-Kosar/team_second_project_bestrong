@@ -29,7 +29,7 @@ canary:
 postgresql:
   enabled: true
   image:
-    registry: acrbestrong01.azurecr.io
+    registry: acrbestrongstu.azurecr.io
     repository: bitnami/postgresql
     tag: "16"
   auth:
