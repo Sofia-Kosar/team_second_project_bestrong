@@ -73,7 +73,7 @@ data:
       @type tail
       @id in_tail_container_logs
       path /var/log/containers/*bestrong*.log
-      pos_file /var/log/fluentd-bestrong.log.pos
+      pos_file /var/log/fluentd-pos/bestrong.pos
       tag bestrong.*
       read_from_head false
       <parse>
@@ -129,6 +129,9 @@ spec:
         component: log-collector
     spec:
       serviceAccountName: fluentd
+      securityContext:
+        runAsUser: 0
+        runAsGroup: 0
 
       # Tolerations щоб запускатись на всіх nodes (включаючи master)
       tolerations:
