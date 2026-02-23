@@ -60,6 +60,26 @@ grafana:
         gnetId: 3662
         revision: 1
         datasource: Prometheus
+      # BeStrong API Logs Dashboard (Loki)
+      bestrong-logs:
+        gnetId: 15141
+        revision: 1
+        datasource: Loki
+
+  # Datasources: Prometheus + Loki
+  additionalDataSources:
+    - name: Loki
+      type: loki
+      url: http://loki-gateway.monitoring.svc.cluster.local
+      access: proxy
+      isDefault: false
+      jsonData:
+        maxLines: 1000
+        derivedFields:
+          - datasourceUid: prometheus
+            matcherRegex: "traceID=(\\w+)"
+            name: TraceID
+            url: "$${__value.raw}"
 
 # Prometheus Configuration
 prometheus:

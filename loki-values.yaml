@@ -1,0 +1,57 @@
+# ================================================
+# Loki Configuration (Log Storage for Grafana)
+# ================================================
+# Встановлення:
+#   helm install loki grafana/loki -n monitoring -f loki-values.yaml
+# ================================================
+
+loki:
+  auth_enabled: false
+
+  commonConfig:
+    replication_factor: 1
+
+  storage:
+    type: filesystem
+
+  # Schema для зберігання logs
+  schemaConfig:
+    configs:
+      - from: "2024-01-01"
+        store: tsdb
+        object_store: filesystem
+        schema: v13
+        index:
+          prefix: index_
+          period: 24h
+
+  # Limits для контролю ресурсів
+  limits_config:
+    retention_period: 168h  # 7 днів
+    ingestion_rate_mb: 16
+    ingestion_burst_size_mb: 32
+    max_query_series: 5000
+    max_entries_limit_per_query: 50000
+
+# Один pod для economical deployment
+singleBinary:
+  replicas: 1
+  persistence:
+    enabled: true
+    size: 10Gi
+
+# Відключаємо непотрібні компоненти (для простого deployment)
+write:
+  replicas: 0
+read:
+  replicas: 0
+backend:
+  replicas: 0
+
+# Відключаємо canary (зменшує ресурси)
+lokiCanary:
+  enabled: false
+
+# Відключаємо test schema warning
+test:
+  enabled: false
