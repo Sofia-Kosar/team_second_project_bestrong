@@ -1,4 +1,4 @@
-{{- if and .Values.ingress.enabled .Values.certManager.enabled -}}
+{{- if and .Values.ingress.enabled .Values.certManager.enabled (not .Values.canary.enabled) -}}
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
@@ -8,7 +8,7 @@ metadata:
 spec:
   secretName: {{ .Release.Name }}-tls
   dnsNames:
-    - {{ if .Values.canary.enabled }}{{ .Values.canary.host | default (printf "canary-%s" .Values.ingress.host) }}{{ else }}{{ .Values.ingress.host }}{{ end }}
+    - {{ .Values.ingress.host }}
   issuerRef:
     name: {{ .Values.certManager.clusterIssuer }}
     kind: ClusterIssuer
