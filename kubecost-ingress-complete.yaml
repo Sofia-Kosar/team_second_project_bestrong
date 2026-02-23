@@ -1,5 +1,5 @@
 ---
-# StripPrefix middleware: прибирає /kubecost з URL перед передачею в KubeCost
+# StripPrefix middleware: прибирає /kubecost/ з URL перед передачею в KubeCost
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
@@ -11,7 +11,22 @@ spec:
   stripPrefix:
     prefixes:
       - /kubecost
-    forceSlash: false
+    forceSlash: true
+
+---
+# RedirectRegex: редірект /kubecost -> /kubecost/ (trailing slash для відносних шляхів)
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: kubecost-redirect
+  namespace: kubecost
+  labels:
+    app: kubecost
+spec:
+  redirectRegex:
+    regex: "^https://bestrongteam2\\.duckdns\\.org/kubecost$"
+    replacement: "https://bestrongteam2.duckdns.org/kubecost/"
+    permanent: false
 
 ---
 # IngressRoute: маршрутизує https://bestrongteam2.duckdns.org/kubecost -> KubeCost
@@ -27,17 +42,29 @@ spec:
   entryPoints:
     - websecure
   routes:
-    - match: Host(`bestrongteam2.duckdns.org`) && PathPrefix(`/kubecost`)
+    - match: Host(`bestrongteam2.duckdns.org`) && Path(`/kubecost`)
       kind: Rule
-      priority: 50  # Вищий пріоритет ніж API (priority: 10)
+      priority: 55
       middlewares:
-        - name: basic-auth           # Basic Authentication (з kubecost-basic-auth.yaml)
+        - name: basic-auth
           namespace: kubecost
-        - name: kubecost-stripprefix # Прибирає /kubecost з шляху
+        - name: kubecost-redirect
+          namespace: kubecost
+      services:
+        - name: kubecost-cost-analyzer
+          port: 9090
+          namespace: kubecost
+    - match: Host(`bestrongteam2.duckdns.org`) && PathPrefix(`/kubecost/`)
+      kind: Rule
+      priority: 50
+      middlewares:
+        - name: basic-auth
+          namespace: kubecost
+        - name: kubecost-stripprefix
           namespace: kubecost
       services:
         - name: kubecost-cost-analyzer
           port: 9090
           namespace: kubecost
   tls:
-    secretName: bestrong-prod-tls   # Використовує існуючий Let's Encrypt сертифікат
+    secretName: bestrong-prod-tls
