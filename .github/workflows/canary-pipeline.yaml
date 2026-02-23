@@ -22,13 +22,16 @@ jobs:
     defaults:
       run:
         working-directory: ${{ env.TF_WORKING_DIR }}
-    env:
-      ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
-      ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
-      ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
-      ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
     steps:
       - uses: actions/checkout@v3
+
+      - name: Sanitize ARM secrets
+        run: |
+          echo "ARM_CLIENT_ID=$(echo '${{ secrets.ARM_CLIENT_ID }}' | tr -d '[:space:]')" >> $GITHUB_ENV
+          echo "ARM_CLIENT_SECRET=$(echo '${{ secrets.ARM_CLIENT_SECRET }}' | tr -d '\n\r')" >> $GITHUB_ENV
+          echo "ARM_SUBSCRIPTION_ID=$(echo '${{ secrets.ARM_SUBSCRIPTION_ID }}' | tr -d '[:space:]')" >> $GITHUB_ENV
+          echo "ARM_TENANT_ID=$(echo '${{ secrets.ARM_TENANT_ID }}' | tr -d '[:space:]')" >> $GITHUB_ENV
+
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v2
         with:
