@@ -10,30 +10,29 @@ spec:
     - websecure
   routes:
 {{- if .Values.canary.enabled }}
-    # === CANARY RELEASE ===
-    # Використовуємо окремий домен для canary (canary.host у values)
-    # Він веде ПРЯМО на canary-сервіс, щоб тестувати його ізольовано.
+    # canary release
+    # using this domain for testing
     - match: Host(`{{ .Values.canary.host | default (printf "canary-%s" .Values.ingress.host) }}`)
       kind: Rule
       priority: 50
       services:
-        - name: {{ .Release.Name }}   # Це вказує на bestrong-canary
+        - name: {{ .Release.Name }}   # it points on bestrong canary
           port: {{ .Values.service.port }}
 
 {{- else }}
-    # === PROD RELEASE ===
-    # Це основний домен. Тут працює розподіл трафіку.
+    # prod release
+    # a main domen with weighted traffic
     - match: Host(`{{ .Values.ingress.host }}`)
       kind: Rule
       priority: 10
       
       {{- if gt (.Values.canary.weight | int) 0 }}
-      # Якщо вага > 0, використовуємо TraefikService для розподілу (20/80)
+      # if weight > 0, using traffic weighting (20/80)
       services:
-        - name: bestrong-weighted   # Ім'я має збігатися з тим, що в traefik-service.yaml
+        - name: bestrong-weighted  
           kind: TraefikService
       {{- else }}
-      # Якщо вага = 0 (або канарки немає), йдемо прямо на прод
+      # if weight = 0 we going on prod
       services:
         - name: {{ .Release.Name }}
           port: {{ .Values.service.port }}

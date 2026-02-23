@@ -143,7 +143,6 @@ jobs:
           --set canary.enabled=false \
           --set canary.weight=20 \
           --set postgresql.enabled=true \
-          --set postgresql.image.registry=docker.io \
           --set env.connectionString="${{ secrets.DB_CONNECTION_STRING }}" \
           --set env.aspnetEnvironment="Production" \
           --namespace default

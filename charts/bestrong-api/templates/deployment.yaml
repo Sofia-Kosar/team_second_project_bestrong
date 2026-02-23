@@ -8,13 +8,13 @@ spec:
   replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
-      # Це має суворо збігатися з selector у service.yaml
+      # it has to be the same as selector in service.yaml
       app: {{ .Release.Name }}
   template:
     metadata:
       labels:
         app: {{ .Release.Name }}
-        # Додаткова мітка для зручності відстеження в k9s або kubectl
+        # also we have this for logs monitoring
         version: {{ if .Values.canary.enabled }}canary{{ else }}stable{{ end }}
     spec:
       {{- with .Values.imagePullSecrets }}
@@ -27,20 +27,28 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy | default "Always" }}
           env:
             - name: DB_CONNECTION_STRING
-              # Логіка: Canary завжди стукає в базу Stable-релізу
+              # canary and stable have the same database
               value: "Host={{ if .Values.canary.enabled }}bestrong-prod-postgresql{{ else }}{{ .Release.Name }}-postgresql{{ end }};Port=5432;Database={{ .Values.postgresql.auth.database }};Username={{ .Values.postgresql.auth.username }};Password={{ .Values.postgresql.auth.password }};"
             - name: ASPNETCORE_ENVIRONMENT
               value: {{ .Values.env.ASPNETCORE_ENVIRONMENT | default "Production" | quote }}
-            # Додаємо мітку, щоб бачити різницю в логах (опціонально)
+            # for logs difference
             - name: APP_VERSION
               value: "{{ .Values.image.tag }}"
           ports:
             - containerPort: {{ .Values.service.targetPort }}
               name: http
-          # Додамо проби, щоб Traefik не слав трафік на "мертві" поди
+          # adding probes so traefik dont send trafic to broken pods
           livenessProbe:
             httpGet:
               path: /health
               port: http
             initialDelaySeconds: 10
             periodSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /health  
+              port: http
+            initialDelaySeconds: 10  
+            periodSeconds: 5         
+            successThreshold: 1      
+            failureThreshold: 3
