@@ -17,12 +17,7 @@ ingress:
   host: "bestrongteam2.duckdns.org"
 
 canary:
-  # enabled: true = this is a canary release (deployed to canary.host)
-  # enabled: false = this is a production release (deployed to main hostname)
   enabled: false
-  
-  # host: окремий домен для canary (якщо enabled=true)
-  # Приклад: "canary-bestrongteam2.duckdns.org"
   host: ""
   
   # weight: percentage of traffic to send to canary (0-100)
@@ -34,7 +29,7 @@ canary:
 postgresql:
   enabled: true
   image:
-    registry: docker.io
+    registry: acrbestrong01.azurecr.io
     repository: bitnami/postgresql
     tag: "16"
   auth:
@@ -49,11 +44,14 @@ postgresql:
 
 certManager:
   enabled: true
+  # Використовуйте "letsencrypt-staging" для тестування, 
+  # потім "letsencrypt-prod" для production
   clusterIssuer: "letsencrypt-prod"
 
 monitoring:
   enabled: true
-  
+  # Prometheus алерти будуть створені в namespace monitoring
+  # Алерти спрацьовують при CPU > 70% та Memory > 70%
 
 env:
   ASPNETCORE_ENVIRONMENT: "Development"
