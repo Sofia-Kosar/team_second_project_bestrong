@@ -1,8 +1,8 @@
 import json
+import sys
 import unittest
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, patch
 
-# Patch env vars before importing the module
 ENV_VARS = {
     "STORAGE_CONNECTION_STRING": "DefaultEndpointsProtocol=https;AccountName=test;AccountKey=dGVzdA==;EndpointSuffix=core.windows.net",
     "FILE_SHARE_NAME":           "pdf-input",
@@ -13,21 +13,24 @@ ENV_VARS = {
     "OPENAI_DEPLOYMENT_NAME":    "gpt-4o",
     "DISCORD_WEBHOOK_URL":       "https://discord.com/api/webhooks/test",
     "SLACK_WEBHOOK_URL":         "https://hooks.slack.com/services/test",
+    "STORAGE_ACCOUNT_NAME":      "stbesstrongocr",
 }
 
 
-@patch.dict("os.environ", ENV_VARS)
-class TestFormatMessage(unittest.TestCase):
-    def setUp(self):
-        import importlib
-        import sys
-        for mod in list(sys.modules.keys()):
-            if "function_app" in mod:
-                del sys.modules[mod]
-
+def _import_fa():
+    """Import function_app with env vars patched at module level."""
+    for mod in list(sys.modules.keys()):
+        if "function_app" in mod:
+            del sys.modules[mod]
+    with patch.dict("os.environ", ENV_VARS):
         with patch("azure.functions.FunctionApp"):
             import function_app as fa
-            self.fa = fa
+    return fa
+
+
+class TestFormatMessage(unittest.TestCase):
+    def setUp(self):
+        self.fa = _import_fa()
 
     def test_format_message_full(self):
         analysis = {
@@ -37,10 +40,10 @@ class TestFormatMessage(unittest.TestCase):
         }
         result = self.fa._format_message("invoice.pdf", "2025-01-01T00:00:00+00:00", analysis)
 
-        self.assertEqual(result["file_name"],    "invoice.pdf")
-        self.assertIn("999.99",                  result["highest_price"])
-        self.assertIn("4.99",                    result["lowest_price"])
-        self.assertEqual(result["summary"],      "Invoice with two prices")
+        self.assertEqual(result["file_name"],   "invoice.pdf")
+        self.assertIn("999.99",                 result["highest_price"])
+        self.assertIn("4.99",                   result["lowest_price"])
+        self.assertEqual(result["summary"],     "Invoice with two prices")
 
     def test_format_message_missing_prices(self):
         result = self.fa._format_message("doc.pdf", "2025-01-01T00:00:00+00:00", {})
@@ -53,27 +56,20 @@ class TestFormatMessage(unittest.TestCase):
         self.assertEqual(result["summary"], "")
 
 
-@patch.dict("os.environ", ENV_VARS)
 class TestSendDiscord(unittest.TestCase):
     def setUp(self):
-        import sys
-        for mod in list(sys.modules.keys()):
-            if "function_app" in mod:
-                del sys.modules[mod]
-
-        with patch("azure.functions.FunctionApp"):
-            import function_app as fa
-            self.fa = fa
+        self.fa = _import_fa()
 
     @patch("requests.post")
     def test_discord_called_with_embed(self, mock_post):
         mock_post.return_value = MagicMock(ok=True)
         message = {
-            "file_name":    "test.pdf",
-            "summary":      "Test",
+            "file_name":     "test.pdf",
+            "summary":       "Test",
             "highest_price": "100 USD — Total",
             "lowest_price":  "10 USD — Unit",
-            "processed_at": "2025-01-01T00:00:00+00:00",
+            "processed_at":  "2025-01-01T00:00:00+00:00",
+            "result_url":    "",
         }
         self.fa._send_discord(message)
 
@@ -86,61 +82,44 @@ class TestSendDiscord(unittest.TestCase):
     def test_discord_logs_warning_on_failure(self, mock_post):
         mock_post.return_value = MagicMock(ok=False, status_code=400, text="Bad Request")
         message = {
-            "file_name":    "test.pdf",
-            "summary":      "",
+            "file_name":     "test.pdf",
+            "summary":       "",
             "highest_price": "?  — ",
             "lowest_price":  "?  — ",
-            "processed_at": "",
+            "processed_at":  "",
+            "result_url":    "",
         }
-        # Should not raise
         self.fa._send_discord(message)
         mock_post.assert_called_once()
 
 
-@patch.dict("os.environ", ENV_VARS)
 class TestSendSlack(unittest.TestCase):
     def setUp(self):
-        import sys
-        for mod in list(sys.modules.keys()):
-            if "function_app" in mod:
-                del sys.modules[mod]
-
-        with patch("azure.functions.FunctionApp"):
-            import function_app as fa
-            self.fa = fa
+        self.fa = _import_fa()
 
     @patch("requests.post")
     def test_slack_called_with_blocks(self, mock_post):
         mock_post.return_value = MagicMock(ok=True)
         message = {
-            "file_name":    "test.pdf",
-            "summary":      "Test summary",
+            "file_name":     "test.pdf",
+            "summary":       "Test summary",
             "highest_price": "100 USD — Total",
             "lowest_price":  "10 USD — Unit",
-            "processed_at": "2025-01-01T00:00:00+00:00",
+            "processed_at":  "2025-01-01T00:00:00+00:00",
+            "result_url":    "https://example.com/result.json",
         }
         self.fa._send_slack(message)
 
         mock_post.assert_called_once()
         payload = mock_post.call_args.kwargs["json"]
         self.assertIn("blocks", payload)
-
-        header_block = payload["blocks"][0]
-        self.assertEqual(header_block["type"], "header")
-        self.assertIn("test.pdf", header_block["text"]["text"])
+        self.assertEqual(payload["blocks"][0]["type"], "header")
+        self.assertIn("test.pdf", payload["blocks"][0]["text"]["text"])
 
 
-@patch.dict("os.environ", ENV_VARS)
 class TestBuildResult(unittest.TestCase):
     def setUp(self):
-        import sys
-        for mod in list(sys.modules.keys()):
-            if "function_app" in mod:
-                del sys.modules[mod]
-
-        with patch("azure.functions.FunctionApp"):
-            import function_app as fa
-            self.fa = fa
+        self.fa = _import_fa()
 
     def _make_di_result(self):
         result = MagicMock()
@@ -155,17 +134,19 @@ class TestBuildResult(unittest.TestCase):
 
     def _make_openai_response(self):
         price_data = {
-            "prices":        [{"value": 100, "currency": "USD", "context": "Total",  "classification": "HIGH"},
-                              {"value": 10,  "currency": "USD", "context": "Unit",   "classification": "LOW"}],
+            "prices": [
+                {"value": 100, "currency": "USD", "context": "Total", "classification": "HIGH"},
+                {"value": 10,  "currency": "USD", "context": "Unit",  "classification": "LOW"},
+            ],
             "highest_price": {"value": 100, "currency": "USD", "context": "Total"},
             "lowest_price":  {"value": 10,  "currency": "USD", "context": "Unit"},
             "summary":       "Two prices found",
         }
-        msg      = MagicMock()
-        msg.content = json.dumps(price_data)
-        choice   = MagicMock()
+        msg            = MagicMock()
+        msg.content    = json.dumps(price_data)
+        choice         = MagicMock()
         choice.message = msg
-        response = MagicMock()
+        response       = MagicMock()
         response.choices = [choice]
         return response
 
@@ -179,9 +160,9 @@ class TestBuildResult(unittest.TestCase):
         result = self.fa._build_result("invoice.pdf", b"%PDF-fake", di_client, openai_client)
 
         self.assertEqual(result["file_name"], "invoice.pdf")
-        self.assertIn("processed_at",         result)
-        self.assertIn("ocr_result",           result)
-        self.assertIn("ai_analysis",          result)
+        self.assertIn("processed_at",  result)
+        self.assertIn("ocr_result",    result)
+        self.assertIn("ai_analysis",   result)
 
         ocr = result["ocr_result"]
         self.assertEqual(ocr["page_count"], 1)
