@@ -13,7 +13,7 @@ variable "location" {
 variable "acr_name_prefix" {
   description = "Prefix for the Azure Container Registry name (must be unique globally)"
   type        = string
-  default     = "acrbestrongstu"
+  default     = "acrbestrongkhrys"
 }
 
 variable "aks_cluster_name" {
@@ -38,4 +38,24 @@ variable "vm_size" {
   description = "The size of the Virtual Machine for the nodes"
   type        = string
   default     = "Standard_B2as_v2"
+}
+
+variable "ocr_resource_group_name" {
+  description = "Name of the Resource Group for OCR/AI resources"
+  type        = string
+  default     = "rg-bestrong-ocr"
+}
+
+variable "discord_webhook_url" {
+  description = "Discord incoming webhook URL for result notifications"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "slack_webhook_url" {
+  description = "Slack incoming webhook URL for result notifications"
+  type        = string
+  sensitive   = true
+  default     = ""
 }

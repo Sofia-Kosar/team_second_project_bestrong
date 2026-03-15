@@ -1,7 +1,7 @@
 replicaCount: 1
 
 image:
-  repository: acrbestrongstu.azurecr.io/bestrong-api
+  repository: acrbestrongkhrys.azurecr.io/bestrong-api
   tag: "latest"
   pullPolicy: IfNotPresent
 
@@ -29,7 +29,7 @@ canary:
 postgresql:
   enabled: true
   image:
-    registry: acrbestrongstu.azurecr.io
+    registry: acrbestrongkhrys.azurecr.io
     repository: bitnami/postgresql
     tag: "16"
   auth:
