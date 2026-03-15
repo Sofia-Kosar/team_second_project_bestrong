@@ -1,0 +1,489 @@
+================================================================================
+         BESTRONG OCR PIPELINE — ПОВНА ДОКУМЕНТАЦІЯ ПРОЄКТУ
+================================================================================
+Автор:    Khrystyna Smakovska
+Дата:     2026-03-15
+Репо:     https://github.com/Sofia-Kosar/team_second_project_bestrong
+Підписка: Azure for Students (3e3b714c-5258-412b-a789-22e19a55fc7c)
+================================================================================
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. МЕТА ПРОЄКТУ
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+PoC (Proof of Concept) застосунок для:
+  - Автоматичного зчитування PDF-документів (інвойси, чеки, прайс-листи)
+  - OCR через Azure AI Document Intelligence
+  - Аналізу цін за допомогою LLM моделі GPT-4o
+  - Збереження результатів у Azure Blob Storage у форматі JSON
+  - Push-нотифікацій у Discord та Slack при появі нового результату
+
+Команда: DevOps Engineering Team 2
+Завдання: IaC + CI/CD + Azure Function + Notification System
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2. АРХІТЕКТУРА
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  [PDF файл]
+      │
+      ▼
+  Azure File Share (pdf-input)
+      │
+      │  ← Timer Trigger (кожні 5 хвилин)
+      ▼
+  Azure Function: process_pdfs
+      │
+      ├──► Azure AI Document Intelligence
+      │         (читає текст, таблиці, key-value пари)
+      │
+      ├──► OpenAI GPT-4o API (platform.openai.com)
+      │         (аналізує ціни: HIGH / LOW класифікація)
+      │
+      ▼
+  Azure Blob Storage (results/назва.json)
+      │
+      │  ← Blob Trigger (миттєво)
+      ▼
+  Azure Function: notify_result
+      │
+      ├──► Discord Webhook (embed з цінами + посиланням)
+      └──► Slack Webhook   (blocks з цінами + посиланням)
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+3. СТРУКТУРА РЕПОЗИТОРІЮ
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+team_second_project_bestrong/
+│
+├── function_app/                    ← Python Azure Function
+│   ├── function_app.py              ← Основний код (2 функції)
+│   ├── requirements.txt             ← Залежності Python
+│   ├── host.json                    ← Конфігурація Azure Functions runtime
+│   ├── local.settings.json          ← Локальні env vars (не в git)
+│   └── tests/
+│       ├── __init__.py
+│       └── test_function_app.py     ← 7 unit тестів
+│
+├── terraform/                       ← Інфраструктура як код
+│   ├── main.tf                      ← Кореневий модуль
+│   ├── variables.tf                 ← Змінні
+│   ├── outputs.tf                   ← Виводи
+│   └── modules/
+│       ├── aks-env/                 ← AKS (основний проєкт)
+│       └── ocr-env/                 ← OCR pipeline (новий)
+│           ├── main.tf              ← Ресурси Azure
+│           ├── variables.tf         ← Змінні модуля
+│           └── outputs.tf           ← Виводи модуля
+│
+├── .github/workflows/
+│   ├── terraform-ocr.yaml          ← CI/CD для інфраструктури
+│   ├── function-deploy.yaml        ← CI/CD для Function App
+│   └── canary-pipeline.yaml        ← CI/CD для основного .NET API
+│
+└── charts/bestrong-api/             ← Helm chart для основного API
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+4. ІНФРАСТРУКТУРА (TERRAFORM)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+4.1 Terraform Backend
+─────────────────────
+  Storage Account:  besstrongtfstate
+  Container:        tfstate
+  Key:              terraform.tfstate
+  Resource Group:   bestrong-tfstate-rg
+
+  Terraform стан зберігається в Azure — це дозволяє команді працювати
+  разом і CI/CD знати поточний стан інфраструктури.
+
+4.2 Workspaces (Dev / Prod)
+────────────────────────────
+  Terraform workspaces = окремі стани для різних середовищ.
+
+  Workspace "dev"  → гілка develop → суфікс "-dev"
+  Workspace "prod" → гілка main    → суфікс "-prod"
+
+  Переключення відбувається автоматично в CI/CD:
+    terraform workspace select dev || terraform workspace new dev
+
+4.3 Ресурси (модуль ocr-env)
+──────────────────────────────
+  Файл: terraform/modules/ocr-env/main.tf
+
+  ┌─────────────────────────────────────────────────────────────────┐
+  │ Ресурс                          │ Dev назва              │ Тип  │
+  ├─────────────────────────────────┼────────────────────────┼──────┤
+  │ Resource Group                  │ rg-bestrong-ocr-dev    │ RG   │
+  │ Storage Account                 │ stbesstrongocrdev      │ SA   │
+  │ File Share                      │ pdf-input              │ FS   │
+  │ Blob Container                  │ results                │ BC   │
+  │ Document Intelligence           │ cog-docint-bestrong-dev│ Cog  │
+  │ Azure OpenAI (ресурс)           │ cog-openai-bestrong    │ Cog  │
+  │ Service Plan (Consumption)      │ plan-ocr-bestrong-dev  │ Plan │
+  │ Linux Function App (Python 3.11)│ func-ocr-bestrong-dev  │ Func │
+  └─────────────────────────────────────────────────────────────────┘
+
+  Примітка: Azure OpenAI модель (gpt-4o) не деплоїться через Azure
+  через нульову квоту в Azure for Students підписці. Замість цього
+  використовується OpenAI API (platform.openai.com) з тим же GPT-4o.
+
+4.4 App Settings Function App
+───────────────────────────────
+  FUNCTIONS_WORKER_RUNTIME  = python
+  STORAGE_CONNECTION_STRING = <рядок підключення до storage>
+  FILE_SHARE_NAME           = pdf-input
+  BLOB_CONTAINER_NAME       = results
+  DOC_INTELLIGENCE_ENDPOINT = https://francecentral.api.cognitive.microsoft.com/
+  DOC_INTELLIGENCE_KEY      = <ключ>
+  OPENAI_API_KEY            = sk-proj-... (з platform.openai.com)
+  OPENAI_DEPLOYMENT_NAME    = gpt-4o
+  STORAGE_ACCOUNT_NAME      = stbesstrongocrdev
+  DISCORD_WEBHOOK_URL       = https://discord.com/api/webhooks/...
+  SLACK_WEBHOOK_URL         = <якщо є>
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+5. AZURE FUNCTION — КОД
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Файл: function_app/function_app.py
+Мова: Python 3.11
+Runtime: Azure Functions v4
+
+5.1 Функція 1: process_pdfs
+────────────────────────────
+  Тригер:    Timer (розклад: "0 */5 * * * *" = кожні 5 хвилин)
+  Параметр:  run_on_startup=False (не запускається при деплої)
+
+  Алгоритм:
+  1. Підключається до File Share через ShareServiceClient
+  2. Переглядає всі файли в кореневій директорії
+  3. Пропускає файли що не є .pdf
+  4. Пропускає PDF якщо вже є відповідний .json в Blob (уникає дублів)
+  5. Завантажує PDF bytes
+  6. Викликає _build_result() → повертає фінальний dict
+  7. Серіалізує в JSON та зберігає в Blob
+
+  Функція _build_result():
+  ┌── Document Intelligence ──────────────────────────────────────────┐
+  │ Модель: prebuilt-layout                                            │
+  │ Вхід:   PDF bytes (bytes_source)                                   │
+  │ Вихід:  page_count, content (текст), tables, key_value_pairs       │
+  └───────────────────────────────────────────────────────────────────┘
+  ┌── OpenAI GPT-4o ───────────────────────────────────────────────────┐
+  │ Модель: gpt-4o (через platform.openai.com)                         │
+  │ Вхід:   Перші 4000 символів тексту + системний промпт              │
+  │ Формат: response_format={"type": "json_object"}                    │
+  │ Вихід:  prices[], highest_price, lowest_price, summary             │
+  └───────────────────────────────────────────────────────────────────┘
+
+  Структура фінального JSON:
+  {
+    "file_name": "invoice.pdf",
+    "processed_at": "2026-03-15T12:00:00+00:00",
+    "ocr_result": {
+      "page_count": 2,
+      "content": "текст документу...",
+      "tables": [{ "rows": 6, "cols": 4, "cells": [...] }],
+      "key_value_pairs": [{ "key": "Total", "value": "$471.18" }]
+    },
+    "ai_analysis": {
+      "model": "gpt-4o",
+      "price_analysis": {
+        "prices": [
+          { "value": 471.18, "currency": "USD",
+            "context": "Invoice Total", "classification": "HIGH" },
+          { "value": 12.99,  "currency": "USD",
+            "context": "Unit price", "classification": "LOW" }
+        ],
+        "highest_price": { "value": 471.18, "currency": "USD", "context": "..." },
+        "lowest_price":  { "value": 12.99,  "currency": "USD", "context": "..." },
+        "summary": "Invoice for sports equipment..."
+      }
+    }
+  }
+
+5.2 Функція 2: notify_result
+──────────────────────────────
+  Тригер:    Blob (path="results/{name}", connection="AzureWebJobsStorage")
+  Запуск:    Автоматично при появі БУДЬ-ЯКОГО файлу в container "results"
+
+  Алгоритм:
+  1. Читає blob як JSON
+  2. Витягує file_name, processed_at, ai_analysis.price_analysis
+  3. Формує URL: https://stbesstrongocrdev.blob.core.windows.net/results/файл.json
+  4. Викликає _format_message() → стандартизований dict
+  5. Якщо DISCORD_WEBHOOK_URL не порожній → _send_discord()
+  6. Якщо SLACK_WEBHOOK_URL не порожній → _send_slack()
+
+  Discord повідомлення (embed):
+  ┌────────────────────────────────────────────┐
+  │ 📄 PDF Processed: invoice.pdf              │
+  │ Invoice for sports equipment. Total $471.. │
+  │                                            │
+  │ Highest Price  │ Lowest Price              │
+  │ $471.18 USD    │ $12.99 USD                │
+  │ Invoice Total  │ Unit price                │
+  │                                            │
+  │ Processed At: 2026-03-15T12:00:00+00:00    │
+  │ Result JSON: https://...results/invoice... │
+  └────────────────────────────────────────────┘
+
+5.3 Залежності (requirements.txt)
+───────────────────────────────────
+  azure-functions          ← Azure Functions SDK
+  azure-storage-blob       ← Робота з Blob Storage
+  azure-storage-file-share ← Робота з File Share
+  azure-ai-documentintelligence ← OCR SDK
+  openai                   ← OpenAI Python client
+  requests                 ← HTTP запити (webhooks)
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+6. CI/CD PIPELINES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+6.1 terraform-ocr.yaml — Інфраструктура
+─────────────────────────────────────────
+  Тригер: push/PR до main або develop, якщо змінено terraform/**
+
+  ┌─────────────────────────────────────────────────────────────────┐
+  │ Job: validate-plan  (завжди при push/PR)                        │
+  │   1. Checkout коду                                              │
+  │   2. Setup Terraform                                            │
+  │   3. Визначити env з гілки (main=prod, інше=dev)               │
+  │   4. terraform init  (завантажує провайдери, підключає backend) │
+  │   5. terraform workspace select dev|prod                        │
+  │   6. terraform fmt -check  (перевірка форматування)            │
+  │   7. terraform validate    (перевірка синтаксису)               │
+  │   8. terraform plan        (план змін)                          │
+  │   9. Зберегти артефакт tfplan (7 днів)                         │
+  └─────────────────────────────────────────────────────────────────┘
+  ┌─────────────────────────────────────────────────────────────────┐
+  │ Job: apply-dev  (тільки push до develop)                        │
+  │   needs: validate-plan                                          │
+  │   environment: dev                                              │
+  │   → terraform apply -auto-approve -var="environment=dev"        │
+  └─────────────────────────────────────────────────────────────────┘
+  ┌─────────────────────────────────────────────────────────────────┐
+  │ Job: apply-prod  (тільки push до main)                          │
+  │   needs: validate-plan                                          │
+  │   environment: production  ← ПОТРІБНЕ РУЧНЕ ПІДТВЕРДЖЕННЯ      │
+  │   → terraform apply -auto-approve -var="environment=prod"       │
+  └─────────────────────────────────────────────────────────────────┘
+
+6.2 function-deploy.yaml — Function App
+─────────────────────────────────────────
+  Тригер: push/PR до main або develop, якщо змінено function_app/**
+
+  ┌─────────────────────────────────────────────────────────────────┐
+  │ Job: test  (завжди)                                             │
+  │   1. Setup Python 3.11                                          │
+  │   2. pip install -r requirements.txt pytest pytest-cov          │
+  │   3. pytest tests/ -v --cov=. --cov-report=xml                  │
+  │   4. Зберегти coverage.xml (7 днів)                             │
+  └─────────────────────────────────────────────────────────────────┘
+  ┌─────────────────────────────────────────────────────────────────┐
+  │ Job: deploy-dev  (тільки push до develop)                       │
+  │   needs: test                                                   │
+  │   environment: dev                                              │
+  │   → az login → functions-action → func-ocr-bestrong-dev        │
+  └─────────────────────────────────────────────────────────────────┘
+  ┌─────────────────────────────────────────────────────────────────┐
+  │ Job: deploy-prod  (тільки push до main)                         │
+  │   needs: test       ← НЕ залежить від deploy-dev               │
+  │   environment: production ← ПОТРІБНЕ РУЧНЕ ПІДТВЕРДЖЕННЯ       │
+  │   → az login → functions-action → func-ocr-bestrong-prod       │
+  └─────────────────────────────────────────────────────────────────┘
+
+6.3 Стратегія гілок Git
+─────────────────────────
+  main    → production середовище (потребує approve)
+  develop → dev середовище (автоматичний деплой)
+
+  Рекомендований flow:
+    feature/назва → develop → (PR + review) → main
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+7. GITHUB SECRETS (обов'язкові)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Settings → Secrets and variables → Actions → Repository secrets
+
+  ┌────────────────────────┬──────────────────────────────────────────┐
+  │ Secret                 │ Де взяти                                 │
+  ├────────────────────────┼──────────────────────────────────────────┤
+  │ ARM_CLIENT_ID          │ Azure AD → App Registrations → App ID   │
+  │ ARM_CLIENT_SECRET      │ Azure AD → App Registrations → Secrets  │
+  │ ARM_SUBSCRIPTION_ID    │ 3e3b714c-5258-412b-a789-22e19a55fc7c    │
+  │ ARM_TENANT_ID          │ 349810a8-5481-4382-a268-9c7e02cc0fbd    │
+  │ ARM_ACCESS_KEY         │ Storage Account besstrongtfstate → Keys │
+  │ AZURE_CREDENTIALS      │ az ad sp create-for-rbac --json         │
+  │ OPENAI_API_KEY         │ platform.openai.com → API Keys          │
+  │ DISCORD_WEBHOOK_URL    │ Discord → Server Settings → Webhooks    │
+  │ SLACK_WEBHOOK_URL      │ Slack App → Incoming Webhooks           │
+  └────────────────────────┴──────────────────────────────────────────┘
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+8. UNIT ТЕСТИ
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Файл: function_app/tests/test_function_app.py
+  Фреймворк: unittest + pytest
+  Результат: 7/7 passed
+
+  ┌──────────────────────────────────────────┬──────────────────────┐
+  │ Тест                                     │ Що перевіряє         │
+  ├──────────────────────────────────────────┼──────────────────────┤
+  │ test_format_message_full                 │ Правильне форматування│
+  │ test_format_message_missing_prices       │ Відсутні ціни → "?"  │
+  │ test_format_message_empty_summary        │ Порожній summary     │
+  │ test_discord_called_with_embed           │ Discord embed payload│
+  │ test_discord_logs_warning_on_failure     │ Не падає при помилці │
+  │ test_slack_called_with_blocks            │ Slack blocks payload │
+  │ test_build_result_structure              │ Структура JSON       │
+  └──────────────────────────────────────────┴──────────────────────┘
+
+  Запуск локально:
+    pip install -r requirements.txt pytest pytest-cov
+    cd function_app
+    pytest tests/ -v --cov=. --cov-report=xml
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+9. ПОТОЧНИЙ СТАН ДЕПЛОЮ
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Resource Group:    rg-bestrong-ocr-dev
+  Регіон:            francecentral
+
+  ┌────────────────────────────┬────────────────────────────────────┐
+  │ Ресурс                     │ Статус                             │
+  ├────────────────────────────┼────────────────────────────────────┤
+  │ func-ocr-bestrong-dev      │ ✅ Running                         │
+  │   URL: func-ocr-bestrong-dev.azurewebsites.net                  │
+  │   process_pdfs (timer)     │ ✅ Активна                         │
+  │   notify_result (blob)     │ ✅ Активна                         │
+  ├────────────────────────────┼────────────────────────────────────┤
+  │ stbesstrongocrdev          │ ✅ Доступне                        │
+  │   File Share: pdf-input    │ ✅ Існує                           │
+  │   Blob: results            │ ✅ Існує                           │
+  ├────────────────────────────┼────────────────────────────────────┤
+  │ cog-docint-bestrong-dev    │ ✅ Доступне (FormRecognizer S0)    │
+  ├────────────────────────────┼────────────────────────────────────┤
+  │ OPENAI_API_KEY             │ ✅ Встановлено (gpt-4o)            │
+  │ DISCORD_WEBHOOK_URL        │ ✅ Встановлено і протестовано      │
+  │ SLACK_WEBHOOK_URL          │ ⚠️  Не налаштовано                 │
+  └────────────────────────────┴────────────────────────────────────┘
+
+  Git гілки:
+    develop  ← активна (останній commit: 25edd99)
+    main     ← prod (sync з develop потрібен вручну через PR)
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+10. ЯК КОРИСТУВАТИСЯ СИСТЕМОЮ
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+10.1 Завантажити PDF для обробки
+──────────────────────────────────
+  Отримати ключ:
+    az storage account keys list \
+      --account-name stbesstrongocrdev \
+      --resource-group rg-bestrong-ocr-dev \
+      --subscription 3e3b714c-5258-412b-a789-22e19a55fc7c \
+      --query "[0].value" -o tsv
+
+  Завантажити файл:
+    az storage file upload \
+      --account-name stbesstrongocrdev \
+      --share-name pdf-input \
+      --source "C:/шлях/до/файл.pdf" \
+      --account-key "<ключ з попередньої команди>"
+
+  → Через до 5 хвилин Discord отримає нотифікацію
+
+10.2 Переглянути результати в Blob
+────────────────────────────────────
+  az storage blob list \
+    --account-name stbesstrongocrdev \
+    --container-name results \
+    --account-key "<ключ>" \
+    -o table
+
+10.3 Перевірити логи функції
+──────────────────────────────
+  Azure Portal → func-ocr-bestrong-dev → Functions →
+  process_pdfs або notify_result → Monitor → Logs
+
+10.4 Задеплоїти зміни в коді
+──────────────────────────────
+  Автоматично:
+    git add . && git commit -m "..." && git push origin develop
+    → GitHub Actions запустить тести → задеплоїть в DEV
+
+  Вручну:
+    cd function_app
+    func azure functionapp publish func-ocr-bestrong-dev --python
+
+10.5 Оновити інфраструктуру
+─────────────────────────────
+  Змінити terraform/modules/ocr-env/main.tf → commit → push
+  → GitHub Actions запустить terraform plan → apply (DEV автоматично)
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+11. ВІДОМІ ОБМЕЖЕННЯ
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  1. OpenAI quota:
+     Azure for Students підписка має квоту = 0 для всіх OpenAI chat
+     моделей. Вирішено через platform.openai.com API (OPENAI_API_KEY).
+     При переході на Pay-as-you-go підписку можна перейти назад на
+     Azure OpenAI, встановивши create_openai_deployment = true.
+
+  2. PROD середовище:
+     func-ocr-bestrong-prod не задеплоєно — потрібен PR з develop
+     у main і ручне підтвердження в GitHub Actions environment.
+
+  3. Slack:
+     SLACK_WEBHOOK_URL не налаштовано. Код готовий, потрібно лише
+     додати URL в GitHub Secrets і App Settings функції.
+
+  4. Consumption Plan холодний старт:
+     Перший запуск функції після простою може займати 10-30 секунд.
+     Це нормально для Consumption (Y1) плану.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+12. КЛЮЧОВІ ПОСИЛАННЯ
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  GitHub репо:
+    https://github.com/Sofia-Kosar/team_second_project_bestrong
+
+  Azure Portal (Function App):
+    https://portal.azure.com → func-ocr-bestrong-dev
+
+  Function App URL:
+    https://func-ocr-bestrong-dev.azurewebsites.net
+
+  Azure Storage (результати):
+    https://portal.azure.com → stbesstrongocrdev → Containers → results
+
+  OpenAI API Keys:
+    https://platform.openai.com/api-keys
+
+  GitHub Actions:
+    https://github.com/Sofia-Kosar/team_second_project_bestrong/actions
+
+================================================================================
+                              КІНЕЦЬ ДОКУМЕНТАЦІЇ
+================================================================================
