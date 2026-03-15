@@ -13,7 +13,7 @@ variable "location" {
 variable "acr_name_prefix" {
   description = "Prefix for the Azure Container Registry name (must be unique globally)"
   type        = string
-  default     = "acrbestrong01"
+  default     = "acrbestrongkhrys"
 }
 
 variable "aks_cluster_name" {

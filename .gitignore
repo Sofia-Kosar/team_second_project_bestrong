@@ -361,3 +361,7 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+
+# Azure Functions local settings (contains secrets)
+local.settings.jsonfunction_app.zip
+function_app/.python_packages/

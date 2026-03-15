@@ -18,3 +18,18 @@ output "kube_config" {
   value       = module.bestrong_aks.kube_config
   sensitive   = true
 }
+
+output "ocr_function_app_name" {
+  description = "Name of the OCR Azure Function App"
+  value       = module.bestrong_ocr.function_app_name
+}
+
+output "ocr_storage_account_name" {
+  description = "Name of the OCR Storage Account"
+  value       = module.bestrong_ocr.storage_account_name
+}
+
+output "ocr_blob_container_name" {
+  description = "Name of the Blob container for JSON results"
+  value       = module.bestrong_ocr.blob_container_name
+}
