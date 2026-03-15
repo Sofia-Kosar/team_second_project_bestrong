@@ -10,7 +10,7 @@ from azure.storage.blob import BlobServiceClient
 from azure.ai.documentintelligence import DocumentIntelligenceClient
 from azure.ai.documentintelligence.models import AnalyzeDocumentRequest
 from azure.core.credentials import AzureKeyCredential
-from openai import AzureOpenAI
+from openai import OpenAI
 
 app = func.FunctionApp()
 
@@ -19,8 +19,7 @@ FILE_SHARE_NAME           = os.environ["FILE_SHARE_NAME"]
 BLOB_CONTAINER_NAME       = os.environ["BLOB_CONTAINER_NAME"]
 DOC_INTELLIGENCE_ENDPOINT = os.environ["DOC_INTELLIGENCE_ENDPOINT"]
 DOC_INTELLIGENCE_KEY      = os.environ["DOC_INTELLIGENCE_KEY"]
-OPENAI_ENDPOINT           = os.environ["OPENAI_ENDPOINT"]
-OPENAI_KEY                = os.environ["OPENAI_KEY"]
+OPENAI_API_KEY            = os.environ["OPENAI_API_KEY"]
 OPENAI_DEPLOYMENT_NAME    = os.environ.get("OPENAI_DEPLOYMENT_NAME", "gpt-4o")
 DISCORD_WEBHOOK_URL       = os.environ.get("DISCORD_WEBHOOK_URL", "")
 SLACK_WEBHOOK_URL         = os.environ.get("SLACK_WEBHOOK_URL", "")
@@ -49,11 +48,7 @@ def process_pdfs(timer: func.TimerRequest) -> None:
         credential=AzureKeyCredential(DOC_INTELLIGENCE_KEY),
     )
 
-    openai_client = AzureOpenAI(
-        azure_endpoint=OPENAI_ENDPOINT,
-        api_key=OPENAI_KEY,
-        api_version="2024-02-01",
-    )
+    openai_client = OpenAI(api_key=OPENAI_API_KEY)
 
     directory = share.get_directory_client("")
     for item in directory.list_directories_and_files():
@@ -85,7 +80,7 @@ def _build_result(
     file_name: str,
     pdf_bytes: bytes,
     doc_client: DocumentIntelligenceClient,
-    openai_client: AzureOpenAI,
+    openai_client: OpenAI,
 ) -> dict:
     # ── Document Intelligence ─────────────────────────────────────────────────
     poller    = doc_client.begin_analyze_document(

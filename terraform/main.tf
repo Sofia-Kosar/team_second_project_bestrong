@@ -39,4 +39,5 @@ module "bestrong_ocr" {
   location            = var.location
   discord_webhook_url = var.discord_webhook_url
   slack_webhook_url   = var.slack_webhook_url
+  openai_api_key      = var.openai_api_key
 }

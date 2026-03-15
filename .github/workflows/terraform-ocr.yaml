@@ -50,6 +50,7 @@ jobs:
           terraform plan \
             -var="discord_webhook_url=${{ secrets.DISCORD_WEBHOOK_URL }}" \
             -var="slack_webhook_url=${{ secrets.SLACK_WEBHOOK_URL }}" \
+            -var="openai_api_key=${{ secrets.OPENAI_API_KEY }}" \
             -out=tfplan
 
       - name: Upload Plan artifact

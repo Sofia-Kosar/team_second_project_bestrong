@@ -103,9 +103,8 @@ resource "azurerm_linux_function_app" "ocr" {
     "BLOB_CONTAINER_NAME"       = azurerm_storage_container.results.name
     "DOC_INTELLIGENCE_ENDPOINT" = azurerm_cognitive_account.doc_intelligence.endpoint
     "DOC_INTELLIGENCE_KEY"      = azurerm_cognitive_account.doc_intelligence.primary_access_key
-    "OPENAI_ENDPOINT"           = azurerm_cognitive_account.openai.endpoint
-    "OPENAI_KEY"                = azurerm_cognitive_account.openai.primary_access_key
-    "OPENAI_DEPLOYMENT_NAME"    = var.create_openai_deployment ? "gpt-4o-mini" : ""
+    "OPENAI_API_KEY"            = var.openai_api_key
+    "OPENAI_DEPLOYMENT_NAME"   = "gpt-4o"
     "STORAGE_ACCOUNT_NAME"      = azurerm_storage_account.ocr.name
     "DISCORD_WEBHOOK_URL"       = var.discord_webhook_url
     "SLACK_WEBHOOK_URL"         = var.slack_webhook_url

@@ -29,3 +29,10 @@ variable "create_openai_deployment" {
   type        = bool
   default     = false
 }
+
+variable "openai_api_key" {
+  description = "API key from platform.openai.com (used instead of Azure OpenAI)"
+  type        = string
+  sensitive   = true
+  default     = ""
+}

@@ -59,3 +59,10 @@ variable "slack_webhook_url" {
   sensitive   = true
   default     = ""
 }
+
+variable "openai_api_key" {
+  description = "API key from platform.openai.com"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
