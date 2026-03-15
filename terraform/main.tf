@@ -35,8 +35,9 @@ module "bestrong_aks" {
 module "bestrong_ocr" {
   source = "./modules/ocr-env"
 
-  resource_group_name = var.ocr_resource_group_name
+  resource_group_name = "${var.ocr_resource_group_name}-${var.environment}"
   location            = var.location
+  environment         = var.environment
   discord_webhook_url = var.discord_webhook_url
   slack_webhook_url   = var.slack_webhook_url
   openai_api_key      = var.openai_api_key

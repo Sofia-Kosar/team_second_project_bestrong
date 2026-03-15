@@ -15,7 +15,7 @@ resource "azurerm_resource_group" "ocr" {
 # ── Storage Account ────────────────────────────────────────────────────────────
 
 resource "azurerm_storage_account" "ocr" {
-  name                     = "stbesstrongocr"
+  name                     = "stbesstrongocr${var.environment}"
   resource_group_name      = azurerm_resource_group.ocr.name
   location                 = azurerm_resource_group.ocr.location
   account_tier             = "Standard"
@@ -37,7 +37,7 @@ resource "azurerm_storage_container" "results" {
 # ── Azure AI Document Intelligence ────────────────────────────────────────────
 
 resource "azurerm_cognitive_account" "doc_intelligence" {
-  name                = "cog-docint-bestrong"
+  name                = "cog-docint-bestrong-${var.environment}"
   location            = azurerm_resource_group.ocr.location
   resource_group_name = azurerm_resource_group.ocr.name
   kind                = "FormRecognizer"
@@ -47,7 +47,7 @@ resource "azurerm_cognitive_account" "doc_intelligence" {
 # ── Azure OpenAI ───────────────────────────────────────────────────────────────
 
 resource "azurerm_cognitive_account" "openai" {
-  name                = "cog-openai-bestrong"
+  name                = "cog-openai-bestrong-${var.environment}"
   location            = azurerm_resource_group.ocr.location
   resource_group_name = azurerm_resource_group.ocr.name
   kind                = "OpenAI"
@@ -74,7 +74,7 @@ resource "azurerm_cognitive_deployment" "gpt4o" {
 # ── Azure Function App ─────────────────────────────────────────────────────────
 
 resource "azurerm_service_plan" "function" {
-  name                = "plan-ocr-bestrong"
+  name                = "plan-ocr-bestrong-${var.environment}"
   resource_group_name = azurerm_resource_group.ocr.name
   location            = azurerm_resource_group.ocr.location
   os_type             = "Linux"
@@ -82,7 +82,7 @@ resource "azurerm_service_plan" "function" {
 }
 
 resource "azurerm_linux_function_app" "ocr" {
-  name                       = "func-ocr-bestrong"
+  name                       = "func-ocr-bestrong-${var.environment}"
   resource_group_name        = azurerm_resource_group.ocr.name
   location                   = azurerm_resource_group.ocr.location
   storage_account_name       = azurerm_storage_account.ocr.name

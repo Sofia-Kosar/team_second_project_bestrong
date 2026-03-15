@@ -13,9 +13,74 @@ env:
   TF_WORKING_DIR: './terraform'
 
 jobs:
-  terraform:
+  # ── Validate & Plan (every push / PR) ────────────────────────────────────────
+  validate-plan:
     name: Validate & Plan
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.TF_WORKING_DIR }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Sanitize ARM secrets
+        run: |
+          echo "ARM_CLIENT_ID=$(echo '${{ secrets.ARM_CLIENT_ID }}' | tr -d '[:space:]')"             >> $GITHUB_ENV
+          echo "ARM_CLIENT_SECRET=$(echo '${{ secrets.ARM_CLIENT_SECRET }}' | tr -d '\n\r')"          >> $GITHUB_ENV
+          echo "ARM_SUBSCRIPTION_ID=$(echo '${{ secrets.ARM_SUBSCRIPTION_ID }}' | tr -d '[:space:]')" >> $GITHUB_ENV
+          echo "ARM_TENANT_ID=$(echo '${{ secrets.ARM_TENANT_ID }}' | tr -d '[:space:]')"             >> $GITHUB_ENV
+          echo "ARM_ACCESS_KEY=${{ secrets.ARM_ACCESS_KEY }}"                                         >> $GITHUB_ENV
+
+      - name: Set environment from branch
+        run: |
+          if [[ "${GITHUB_REF}" == "refs/heads/main" ]]; then
+            echo "TF_ENV=prod" >> $GITHUB_ENV
+          else
+            echo "TF_ENV=dev" >> $GITHUB_ENV
+          fi
+
+      - name: Terraform Init
+        run: terraform init -backend-config="access_key=${{ secrets.ARM_ACCESS_KEY }}"
+
+      - name: Select or create workspace
+        run: |
+          terraform workspace select ${{ env.TF_ENV }} || terraform workspace new ${{ env.TF_ENV }}
+
+      - name: Terraform Format Check
+        run: terraform fmt -check -recursive
+
+      - name: Terraform Validate
+        run: terraform validate
+
+      - name: Terraform Plan
+        run: |
+          terraform plan \
+            -var="environment=${{ env.TF_ENV }}" \
+            -var="discord_webhook_url=${{ secrets.DISCORD_WEBHOOK_URL }}" \
+            -var="slack_webhook_url=${{ secrets.SLACK_WEBHOOK_URL }}" \
+            -var="openai_api_key=${{ secrets.OPENAI_API_KEY }}" \
+            -out=tfplan
+
+      - name: Upload Plan artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfplan-${{ env.TF_ENV }}
+          path: ${{ env.TF_WORKING_DIR }}/tfplan
+          retention-days: 7
+
+  # ── Apply to DEV (push to develop) ──────────────────────────────────────────
+  apply-dev:
+    name: Apply DEV
+    needs: validate-plan
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+    environment: dev
     defaults:
       run:
         working-directory: ${{ env.TF_WORKING_DIR }}
@@ -39,23 +104,54 @@ jobs:
       - name: Terraform Init
         run: terraform init -backend-config="access_key=${{ secrets.ARM_ACCESS_KEY }}"
 
-      - name: Terraform Format Check
-        run: terraform fmt -check -recursive
+      - name: Select or create DEV workspace
+        run: terraform workspace select dev || terraform workspace new dev
 
-      - name: Terraform Validate
-        run: terraform validate
-
-      - name: Terraform Plan
+      - name: Terraform Apply (DEV)
         run: |
-          terraform plan \
+          terraform apply -auto-approve \
+            -var="environment=dev" \
             -var="discord_webhook_url=${{ secrets.DISCORD_WEBHOOK_URL }}" \
             -var="slack_webhook_url=${{ secrets.SLACK_WEBHOOK_URL }}" \
-            -var="openai_api_key=${{ secrets.OPENAI_API_KEY }}" \
-            -out=tfplan
+            -var="openai_api_key=${{ secrets.OPENAI_API_KEY }}"
 
-      - name: Upload Plan artifact
-        uses: actions/upload-artifact@v4
+  # ── Apply to PROD (push to main, requires manual approval) ──────────────────
+  apply-prod:
+    name: Apply PROD
+    needs: validate-plan
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment: production
+    defaults:
+      run:
+        working-directory: ${{ env.TF_WORKING_DIR }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
         with:
-          name: tfplan
-          path: ${{ env.TF_WORKING_DIR }}/tfplan
-          retention-days: 7
+          terraform_wrapper: false
+
+      - name: Sanitize ARM secrets
+        run: |
+          echo "ARM_CLIENT_ID=$(echo '${{ secrets.ARM_CLIENT_ID }}' | tr -d '[:space:]')"             >> $GITHUB_ENV
+          echo "ARM_CLIENT_SECRET=$(echo '${{ secrets.ARM_CLIENT_SECRET }}' | tr -d '\n\r')"          >> $GITHUB_ENV
+          echo "ARM_SUBSCRIPTION_ID=$(echo '${{ secrets.ARM_SUBSCRIPTION_ID }}' | tr -d '[:space:]')" >> $GITHUB_ENV
+          echo "ARM_TENANT_ID=$(echo '${{ secrets.ARM_TENANT_ID }}' | tr -d '[:space:]')"             >> $GITHUB_ENV
+          echo "ARM_ACCESS_KEY=${{ secrets.ARM_ACCESS_KEY }}"                                         >> $GITHUB_ENV
+
+      - name: Terraform Init
+        run: terraform init -backend-config="access_key=${{ secrets.ARM_ACCESS_KEY }}"
+
+      - name: Select or create PROD workspace
+        run: terraform workspace select prod || terraform workspace new prod
+
+      - name: Terraform Apply (PROD)
+        run: |
+          terraform apply -auto-approve \
+            -var="environment=prod" \
+            -var="discord_webhook_url=${{ secrets.DISCORD_WEBHOOK_URL }}" \
+            -var="slack_webhook_url=${{ secrets.SLACK_WEBHOOK_URL }}" \
+            -var="openai_api_key=${{ secrets.OPENAI_API_KEY }}"
