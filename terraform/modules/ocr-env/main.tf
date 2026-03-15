@@ -1,12 +1,3 @@
-terraform {
-  required_providers {
-    azurerm = {
-      source  = "hashicorp/azurerm"
-      version = "~> 4.0"
-    }
-  }
-}
-
 resource "azurerm_resource_group" "ocr" {
   name     = var.resource_group_name
   location = var.location
@@ -104,7 +95,7 @@ resource "azurerm_linux_function_app" "ocr" {
     "DOC_INTELLIGENCE_ENDPOINT" = azurerm_cognitive_account.doc_intelligence.endpoint
     "DOC_INTELLIGENCE_KEY"      = azurerm_cognitive_account.doc_intelligence.primary_access_key
     "OPENAI_API_KEY"            = var.openai_api_key
-    "OPENAI_DEPLOYMENT_NAME"   = "gpt-4o"
+    "OPENAI_DEPLOYMENT_NAME"    = "gpt-4o"
     "STORAGE_ACCOUNT_NAME"      = azurerm_storage_account.ocr.name
     "DISCORD_WEBHOOK_URL"       = var.discord_webhook_url
     "SLACK_WEBHOOK_URL"         = var.slack_webhook_url
