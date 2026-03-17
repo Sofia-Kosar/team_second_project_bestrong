@@ -18,7 +18,7 @@ jobs:
   # ── Run tests on every push / PR ────────────────────────────────────────────
   test:
     name: Run Tests
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: function_app
@@ -48,7 +48,7 @@ jobs:
   deploy-dev:
     name: Deploy to DEV
     needs: test
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
     environment: dev
 
@@ -79,7 +79,7 @@ jobs:
   deploy-prod:
     name: Deploy to PROD
     needs: test
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     environment: production
 
