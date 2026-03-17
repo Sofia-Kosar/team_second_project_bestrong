@@ -32,9 +32,9 @@ def _blob_url(blob_name: str) -> str:
     return f"https://{STORAGE_ACCOUNT_NAME}.blob.core.windows.net/{RESULTS_CONTAINER}/{blob_name}"
 
 
-# ── OCR + AI processing (Timer trigger every 5 min) ───────────────────────────
+# ── OCR + AI processing (Timer trigger every 30 sec) ───────────────────────────
 
-@app.timer_trigger(schedule="0 */5 * * * *", arg_name="timer", run_on_startup=False)
+@app.timer_trigger(schedule="*/30 * * * * *", arg_name="timer", run_on_startup=True)
 def process_pdfs(timer: func.TimerRequest) -> None:
     logging.info("PDF processing triggered")
 
