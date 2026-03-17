@@ -6,7 +6,6 @@ import re
 import requests
 from datetime import datetime, timezone
 
-from azure.storage.fileshare import ShareServiceClient
 from azure.storage.blob import BlobServiceClient
 from azure.ai.documentintelligence import DocumentIntelligenceClient
 from azure.ai.documentintelligence.models import AnalyzeDocumentRequest
@@ -16,7 +15,6 @@ from openai import OpenAI
 app = func.FunctionApp()
 
 STORAGE_CONNECTION_STRING = os.environ["STORAGE_CONNECTION_STRING"]
-FILE_SHARE_NAME           = os.environ["FILE_SHARE_NAME"]
 BLOB_CONTAINER_NAME       = os.environ["BLOB_CONTAINER_NAME"]
 DOC_INTELLIGENCE_ENDPOINT = os.environ["DOC_INTELLIGENCE_ENDPOINT"]
 DOC_INTELLIGENCE_KEY      = os.environ["DOC_INTELLIGENCE_KEY"]
@@ -24,9 +22,10 @@ OPENAI_API_KEY            = os.environ["OPENAI_API_KEY"]
 OPENAI_DEPLOYMENT_NAME    = os.environ.get("OPENAI_DEPLOYMENT_NAME", "gpt-4o")
 DISCORD_WEBHOOK_URL       = os.environ.get("DISCORD_WEBHOOK_URL", "")
 SLACK_WEBHOOK_URL         = os.environ.get("SLACK_WEBHOOK_URL", "")
-STORAGE_ACCOUNT_NAME      = os.environ.get("STORAGE_ACCOUNT_NAME", "stbesstrongocr")
+STORAGE_ACCOUNT_NAME      = os.environ.get("STORAGE_ACCOUNT_NAME", "stbesstrongocrdev")
 
-RESULTS_CONTAINER = "results"
+PDF_INPUT_CONTAINER = "pdf-input"
+RESULTS_CONTAINER   = "results"
 
 
 def _blob_url(blob_name: str) -> str:
@@ -62,62 +61,63 @@ def _rule_based_price_analysis(content: str) -> dict:
     median = sorted(prices, key=lambda p: p["value"])[len(prices) // 2]["value"]
     for p in prices:
         p["classification"] = (
-            "HIGH" if p["value"] >= median * 1.5 else
-            "LOW" if p["value"] <= median * 0.5 else "MEDIUM"
+            "HIGH"   if p["value"] >= median * 1.5 else
+            "LOW"    if p["value"] <= median * 0.5 else "MEDIUM"
         )
     highest = max(prices, key=lambda p: p["value"])
-    lowest = min(prices, key=lambda p: p["value"])
+    lowest  = min(prices, key=lambda p: p["value"])
     return {
-        "prices": prices,
+        "prices":        prices,
         "highest_price": highest,
-        "lowest_price": lowest,
-        "summary": f"Found {len(prices)} price(s). Highest: {highest['value']} {highest.get('currency', '')}. Lowest: {lowest['value']} {lowest.get('currency', '')}.",
+        "lowest_price":  lowest,
+        "summary":       (f"Found {len(prices)} price(s). "
+                          f"Highest: {highest['value']} {highest.get('currency', '')}. "
+                          f"Lowest: {lowest['value']} {lowest.get('currency', '')}."),
         "method": "rule-based (OpenAI unavailable)",
     }
 
 
-# ── OCR + AI processing (Timer trigger every 30 sec) ───────────────────────────
+# ── OCR + AI processing — Blob trigger on pdf-input container ─────────────────
+# Fires instantly when a PDF is uploaded to the pdf-input blob container.
 
-@app.timer_trigger(schedule="*/30 * * * * *", arg_name="timer", run_on_startup=True)
-def process_pdfs(timer: func.TimerRequest) -> None:
-    logging.info("PDF processing triggered")
+@app.blob_trigger(
+    arg_name="input_blob",
+    path=f"{PDF_INPUT_CONTAINER}/{{name}}",
+    connection="AzureWebJobsStorage",
+)
+def process_pdf_blob(input_blob: func.InputStream) -> None:
+    name = input_blob.name.split("/")[-1]
+    logging.info("Blob trigger fired for: %s", name)
 
-    share_client = ShareServiceClient.from_connection_string(STORAGE_CONNECTION_STRING)
-    share        = share_client.get_share_client(FILE_SHARE_NAME)
+    if not name.lower().endswith(".pdf"):
+        logging.info("Not a PDF, skipping: %s", name)
+        return
+
     blob_service = BlobServiceClient.from_connection_string(STORAGE_CONNECTION_STRING)
-    container    = blob_service.get_container_client(BLOB_CONTAINER_NAME)
+    results      = blob_service.get_container_client(RESULTS_CONTAINER)
+    result_name  = name.replace(".pdf", ".json")
+    result_blob  = results.get_blob_client(result_name)
+
+    if result_blob.exists():
+        logging.info("Already processed, skipping: %s", name)
+        return
 
     doc_client = DocumentIntelligenceClient(
         endpoint=DOC_INTELLIGENCE_ENDPOINT,
         credential=AzureKeyCredential(DOC_INTELLIGENCE_KEY),
     )
-
     openai_client = OpenAI(api_key=OPENAI_API_KEY)
 
-    directory = share.get_directory_client("")
-    for item in directory.list_directories_and_files():
-        name = item["name"]
-        if not name.lower().endswith(".pdf"):
-            continue
-
-        result_name = name.replace(".pdf", ".json")
-        result_blob = container.get_blob_client(result_name)
-
-        if result_blob.exists():
-            logging.info("Skipping %s — already processed", name)
-            continue
-
-        logging.info("Processing %s", name)
-        try:
-            pdf_bytes = share.get_file_client(name).download_file().readall()
-            final_json = _build_result(name, pdf_bytes, doc_client, openai_client)
-            result_blob.upload_blob(
-                json.dumps(final_json, indent=2, ensure_ascii=False),
-                overwrite=True,
-            )
-            logging.info("Saved %s", result_name)
-        except Exception as exc:
-            logging.error("Failed to process %s: %s", name, exc)
+    try:
+        pdf_bytes  = input_blob.read()
+        final_json = _build_result(name, pdf_bytes, doc_client, openai_client)
+        result_blob.upload_blob(
+            json.dumps(final_json, indent=2, ensure_ascii=False),
+            overwrite=True,
+        )
+        logging.info("Saved result: %s", result_name)
+    except Exception as exc:
+        logging.error("Failed to process %s: %s", name, exc)
 
 
 def _build_result(
@@ -134,30 +134,23 @@ def _build_result(
     di_result = poller.result()
 
     ocr_data = {
-        "page_count": len(di_result.pages) if di_result.pages else 0,
-        "content":    di_result.content or "",
-        "tables":     [],
+        "page_count":      len(di_result.pages) if di_result.pages else 0,
+        "content":         di_result.content or "",
+        "tables":          [],
         "key_value_pairs": [],
     }
-
     for table in di_result.tables or []:
         ocr_data["tables"].append({
-            "rows": table.row_count,
-            "cols": table.column_count,
-            "cells": [
-                {"row": c.row_index, "col": c.column_index, "text": c.content}
-                for c in table.cells
-            ],
+            "rows":  table.row_count,
+            "cols":  table.column_count,
+            "cells": [{"row": c.row_index, "col": c.column_index, "text": c.content}
+                      for c in table.cells],
         })
-
     for kv in di_result.key_value_pairs or []:
         if kv.key and kv.value:
-            ocr_data["key_value_pairs"].append({
-                "key":   kv.key.content,
-                "value": kv.value.content,
-            })
+            ocr_data["key_value_pairs"].append({"key": kv.key.content, "value": kv.value.content})
 
-    # ── GPT-4o price analysis (fallback to rule-based if OpenAI fails) ─────────
+    # ── GPT-4o price analysis (fallback to rule-based if OpenAI fails) ────────
     ocr_content = di_result.content or ""
     prompt = (
         "Analyze the document below and find all prices. "
@@ -169,7 +162,6 @@ def _build_result(
         "\"summary\" (string).\n\n"
         f"Document:\n{ocr_content[:4000]}"
     )
-
     try:
         response = openai_client.chat.completions.create(
             model=OPENAI_DEPLOYMENT_NAME,
@@ -192,7 +184,7 @@ def _build_result(
     }
 
 
-# ── Notification on new result (Blob trigger) ─────────────────────────────────
+# ── Notification — Blob trigger on results container ─────────────────────────
 
 @app.blob_trigger(
     arg_name="blob",
@@ -201,7 +193,6 @@ def _build_result(
 )
 def notify_result(blob: func.InputStream) -> None:
     logging.info("New result blob: %s", blob.name)
-
     try:
         data = json.loads(blob.read())
     except Exception as exc:
@@ -211,14 +202,11 @@ def notify_result(blob: func.InputStream) -> None:
     file_name    = data.get("file_name", "unknown")
     processed_at = data.get("processed_at", "")
     analysis     = data.get("ai_analysis", {}).get("price_analysis", {})
-    blob_name    = file_name.replace(".pdf", ".json")
-    result_url   = _blob_url(blob_name)
-
-    message = _format_message(file_name, processed_at, analysis, result_url)
+    result_url   = _blob_url(file_name.replace(".pdf", ".json"))
+    message      = _format_message(file_name, processed_at, analysis, result_url)
 
     if DISCORD_WEBHOOK_URL:
         _send_discord(message)
-
     if SLACK_WEBHOOK_URL:
         _send_slack(message)
 
@@ -244,10 +232,10 @@ def _send_discord(message: dict) -> None:
             "url":         message.get("result_url", ""),
             "color":       3447003,
             "fields": [
-                {"name": "Highest Price", "value": message["highest_price"],              "inline": True},
-                {"name": "Lowest Price",  "value": message["lowest_price"],               "inline": True},
-                {"name": "Processed At",  "value": message["processed_at"],               "inline": False},
-                {"name": "Result JSON",   "value": message.get("result_url", "N/A"),      "inline": False},
+                {"name": "Highest Price", "value": message["highest_price"], "inline": True},
+                {"name": "Lowest Price",  "value": message["lowest_price"],  "inline": True},
+                {"name": "Processed At",  "value": message["processed_at"],  "inline": False},
+                {"name": "Result JSON",   "value": message.get("result_url", "N/A"), "inline": False},
             ],
         }]
     }
@@ -259,23 +247,17 @@ def _send_discord(message: dict) -> None:
 def _send_slack(message: dict) -> None:
     payload = {
         "blocks": [
-            {
-                "type": "header",
-                "text": {"type": "plain_text", "text": f"PDF Processed: {message['file_name']}"},
-            },
-            {
-                "type": "section",
-                "text": {"type": "mrkdwn", "text": message["summary"]},
-            },
-            {
-                "type": "section",
-                "fields": [
-                    {"type": "mrkdwn", "text": f"*Highest Price:*\n{message['highest_price']}"},
-                    {"type": "mrkdwn", "text": f"*Lowest Price:*\n{message['lowest_price']}"},
-                    {"type": "mrkdwn", "text": f"*Processed At:*\n{message['processed_at']}"},
-                    {"type": "mrkdwn", "text": f"*Result JSON:*\n<{message.get('result_url', 'N/A')}|View JSON>"},
-                ],
-            },
+            {"type": "header",
+             "text": {"type": "plain_text", "text": f"PDF Processed: {message['file_name']}"}},
+            {"type": "section",
+             "text": {"type": "mrkdwn", "text": message["summary"]}},
+            {"type": "section",
+             "fields": [
+                 {"type": "mrkdwn", "text": f"*Highest Price:*\n{message['highest_price']}"},
+                 {"type": "mrkdwn", "text": f"*Lowest Price:*\n{message['lowest_price']}"},
+                 {"type": "mrkdwn", "text": f"*Processed At:*\n{message['processed_at']}"},
+                 {"type": "mrkdwn", "text": f"*Result JSON:*\n<{message.get('result_url', 'N/A')}|View JSON>"},
+             ]},
         ]
     }
     resp = requests.post(SLACK_WEBHOOK_URL, json=payload, timeout=10)
