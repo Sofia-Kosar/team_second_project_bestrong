@@ -4,3 +4,4 @@ azure-storage-file-share
 azure-ai-documentintelligence
 openai
 requests
+cryptography==43.0.3
