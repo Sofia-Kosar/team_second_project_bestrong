@@ -2,6 +2,7 @@ import azure.functions as func
 import logging
 import json
 import os
+import re
 import requests
 from datetime import datetime, timezone
 
@@ -30,6 +31,49 @@ RESULTS_CONTAINER = "results"
 
 def _blob_url(blob_name: str) -> str:
     return f"https://{STORAGE_ACCOUNT_NAME}.blob.core.windows.net/{RESULTS_CONTAINER}/{blob_name}"
+
+
+def _rule_based_price_analysis(content: str) -> dict:
+    """Fallback when OpenAI API fails (quota, rate limit)."""
+    pattern = re.compile(
+        r'(?P<cur1>\$|€|£|USD|EUR|UAH|GBP)?\s*'
+        r'(?P<val>\d{1,3}(?:[,\s]\d{3})*(?:\.\d{1,2})?)'
+        r'\s*(?P<cur2>USD|EUR|UAH|GBP|\$|€|£)?',
+        re.IGNORECASE,
+    )
+    prices = []
+    for m in pattern.finditer(content):
+        raw = m.group("val").replace(",", "").replace(" ", "")
+        try:
+            val = float(raw)
+        except ValueError:
+            continue
+        if val < 1:
+            continue
+        currency = (m.group("cur1") or m.group("cur2") or "USD").strip()
+        s, e = max(0, m.start() - 50), min(len(content), m.end() + 50)
+        ctx = content[s:e].replace("\n", " ").strip()
+        prices.append({"value": val, "currency": currency, "context": ctx})
+
+    if not prices:
+        return {"prices": [], "highest_price": {}, "lowest_price": {},
+                "summary": "No prices found.", "method": "rule-based"}
+
+    median = sorted(prices, key=lambda p: p["value"])[len(prices) // 2]["value"]
+    for p in prices:
+        p["classification"] = (
+            "HIGH" if p["value"] >= median * 1.5 else
+            "LOW" if p["value"] <= median * 0.5 else "MEDIUM"
+        )
+    highest = max(prices, key=lambda p: p["value"])
+    lowest = min(prices, key=lambda p: p["value"])
+    return {
+        "prices": prices,
+        "highest_price": highest,
+        "lowest_price": lowest,
+        "summary": f"Found {len(prices)} price(s). Highest: {highest['value']} {highest.get('currency', '')}. Lowest: {lowest['value']} {lowest.get('currency', '')}.",
+        "method": "rule-based (OpenAI unavailable)",
+    }
 
 
 # ── OCR + AI processing (Timer trigger every 30 sec) ───────────────────────────
@@ -85,7 +129,7 @@ def _build_result(
     # ── Document Intelligence ─────────────────────────────────────────────────
     poller    = doc_client.begin_analyze_document(
         "prebuilt-layout",
-        analyze_request=AnalyzeDocumentRequest(bytes_source=pdf_bytes),
+        body=AnalyzeDocumentRequest(bytes_source=pdf_bytes),
     )
     di_result = poller.result()
 
@@ -113,7 +157,8 @@ def _build_result(
                 "value": kv.value.content,
             })
 
-    # ── GPT-4o price analysis ─────────────────────────────────────────────────
+    # ── GPT-4o price analysis (fallback to rule-based if OpenAI fails) ─────────
+    ocr_content = di_result.content or ""
     prompt = (
         "Analyze the document below and find all prices. "
         "For each price decide if it is HIGH or LOW based on context. "
@@ -122,15 +167,19 @@ def _build_result(
         "\"highest_price\" ({value, currency, context}), "
         "\"lowest_price\" ({value, currency, context}), "
         "\"summary\" (string).\n\n"
-        f"Document:\n{di_result.content[:4000]}"
+        f"Document:\n{ocr_content[:4000]}"
     )
 
-    response = openai_client.chat.completions.create(
-        model=OPENAI_DEPLOYMENT_NAME,
-        messages=[{"role": "user", "content": prompt}],
-        response_format={"type": "json_object"},
-    )
-    price_analysis = json.loads(response.choices[0].message.content)
+    try:
+        response = openai_client.chat.completions.create(
+            model=OPENAI_DEPLOYMENT_NAME,
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"},
+        )
+        price_analysis = json.loads(response.choices[0].message.content)
+    except Exception as exc:
+        logging.warning("OpenAI failed (%s), using rule-based fallback", exc)
+        price_analysis = _rule_based_price_analysis(ocr_content)
 
     return {
         "file_name":    file_name,

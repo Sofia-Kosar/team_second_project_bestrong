@@ -93,9 +93,6 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: Install dependencies to package
-        run: pip install -r function_app/requirements.txt --target function_app/.python_packages/lib/site-packages
-
       - name: Deploy to PROD Function App
         uses: Azure/functions-action@v1
         with:
